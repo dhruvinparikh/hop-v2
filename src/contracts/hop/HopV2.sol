@@ -228,6 +228,9 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         //                  abi.encodePacked(_sendTo, _amountShared, addressToBytes32(msg.sender), _composeMsg)
         // _sendTo = 32, _amountShared = 8 (uint64), addressToBytes32(msg.sender) = 32,
         // _composeMsg = 96 (abi.encodePacked(srcEid, dstEid, dstGas, sender, recipient)) + _data.length
+        //     word 1 (bytes32 chunk): abi.encodePacked(srcEid, dstEid, dstGas)
+        //     word 2: sender
+        //     word 3: recipient
         // total = 32 + 8 + 32 + 96 + _data.length = 168 + _data.length
         uint256 executorFee = IExecutor($.EXECUTOR).getFee(_dstEid, address(this), 168 + _data.length, options);
         uint256 totalFee = dvnFee * $.numDVNs + executorFee;
