@@ -47,7 +47,7 @@ contract RemoteVaultDepositTest is FraxTest {
     function test_Initialization() public {
         assertEq(vaultDeposit.name(), NAME, "Name should be set");
         assertEq(vaultDeposit.symbol(), SYMBOL, "Symbol should be set");
-        assertEq(vaultDeposit.owner(), address(this), "Owner should be deployer");
+        assertEq(vaultDeposit.owner(), address(remoteVaultHop), "Owner should be RemoteVaultHop");
     }
 
     function test_CannotReinitialize() public {
@@ -61,6 +61,7 @@ contract RemoteVaultDepositTest is FraxTest {
         address recipient = address(0x123);
         uint256 amount = 100e18;
 
+        vm.prank(address(remoteVaultHop));
         vaultDeposit.mint(recipient, amount);
         assertEq(vaultDeposit.balanceOf(recipient), amount, "Recipient should receive minted tokens");
     }
@@ -69,9 +70,10 @@ contract RemoteVaultDepositTest is FraxTest {
         address recipient1 = address(0x123);
         address recipient2 = address(0x456);
 
+        vm.startPrank(address(remoteVaultHop));
         vaultDeposit.mint(recipient1, 100e18);
         vaultDeposit.mint(recipient2, 200e18);
-
+        vm.stopPrank();
         assertEq(vaultDeposit.balanceOf(recipient1), 100e18);
         assertEq(vaultDeposit.balanceOf(recipient2), 200e18);
         assertEq(vaultDeposit.totalSupply(), 300e18);
@@ -86,6 +88,8 @@ contract RemoteVaultDepositTest is FraxTest {
     function test_Mint_EmitsEvent() public {
         address recipient = address(0x123);
         uint256 amount = 100e18;
+
+        vm.prank(address(remoteVaultHop));
 
         vm.expectEmit(true, true, true, true);
         emit RemoteVaultDeposit.Mint(recipient, amount);
@@ -102,6 +106,7 @@ contract RemoteVaultDepositTest is FraxTest {
         uint64 timestamp = uint64(block.timestamp);
         uint128 pps = 1.1e18;
 
+        vm.prank(vaultDeposit.owner());
         vaultDeposit.setPricePerShare(timestamp, pps);
         assertEq(vaultDeposit.pricePerShare(), pps, "Price per share should be updated");
     }
@@ -116,6 +121,8 @@ contract RemoteVaultDepositTest is FraxTest {
         uint64 timestamp = uint64(block.timestamp);
         uint128 pps = 1.1e18;
 
+        vm.prank(vaultDeposit.owner());
+
         vm.expectEmit(true, true, true, true);
         emit RemoteVaultDeposit.PricePerShareUpdated(timestamp, pps);
         vaultDeposit.setPricePerShare(timestamp, pps);
@@ -124,27 +131,32 @@ contract RemoteVaultDepositTest is FraxTest {
     function test_SetPricePerShare_IgnoresOldTimestamp() public {
         uint64 timestamp1 = uint64(block.timestamp);
         uint128 pps1 = 1.1e18;
+        vm.prank(vaultDeposit.owner());
         vaultDeposit.setPricePerShare(timestamp1, pps1);
 
         // Try to set with older timestamp
         uint64 timestamp2 = timestamp1 - 100;
         uint128 pps2 = 1.2e18;
+        vm.prank(vaultDeposit.owner());
         vaultDeposit.setPricePerShare(timestamp2, pps2);
 
         assertEq(vaultDeposit.pricePerShare(), pps1, "Should not update with older timestamp");
     }
 
     function test_SetPricePerShare_IgnoresZeroPrice() public {
+        vm.prank(vaultDeposit.owner());
         vaultDeposit.setPricePerShare(uint64(block.timestamp), 0);
         assertEq(vaultDeposit.pricePerShare(), 0, "Should not update with zero price");
     }
 
     function test_PricePerShare_Interpolation() public {
         // Set initial price
+        vm.prank(vaultDeposit.owner());
         vaultDeposit.setPricePerShare(uint64(block.timestamp), 1e18);
 
         // Move to block 50 and set new price
         vm.roll(block.number + 50);
+        vm.prank(vaultDeposit.owner());
         vaultDeposit.setPricePerShare(uint64(block.timestamp + 50), 1.1e18);
 
         uint256 pps = vaultDeposit.pricePerShare();
@@ -163,10 +175,12 @@ contract RemoteVaultDepositTest is FraxTest {
 
     function test_PricePerShare_NegativeInterpolation() public {
         // Set initial price
+        vm.prank(vaultDeposit.owner());
         vaultDeposit.setPricePerShare(uint64(block.timestamp), 1.1e18);
 
         // Move forward and set lower price
         vm.roll(block.number + 50);
+        vm.prank(vaultDeposit.owner());
         vaultDeposit.setPricePerShare(uint64(block.timestamp + 50), 1e18);
 
         // Move to halfway point
@@ -179,6 +193,7 @@ contract RemoteVaultDepositTest is FraxTest {
 
     function test_Transfer() public {
         address recipient = address(0x456);
+        vm.prank(address(remoteVaultHop));
         vaultDeposit.mint(address(this), 100e18);
 
         vaultDeposit.transfer(recipient, 50e18);
@@ -191,6 +206,7 @@ contract RemoteVaultDepositTest is FraxTest {
         address spender = address(this);
         address recipient = address(0x456);
 
+        vm.prank(address(remoteVaultHop));
         vaultDeposit.mint(owner, 100e18);
 
         vm.prank(owner);
