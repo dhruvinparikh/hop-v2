@@ -17,11 +17,12 @@ contract RemoteVaultDepositTest is FraxTest {
     string constant NAME = "Test Vault Deposit";
     string constant SYMBOL = "TVD";
 
+    address constant frxUSD = 0xe5020A6d073a794B6E7f05678707dE47986Fb0b6;
+
     function setUp() public {
         // Deploy RemoteVaultHop as the owner
-        vm.createSelectFork(vm.envString("BASE_MAINNET_URL"), 36_482_910);
+        vm.createSelectFork(vm.envString("BASE_MAINNET_URL"), 40_000_000);
 
-        address frxUSD = 0xe5020A6d073a794B6E7f05678707dE47986Fb0b6;
         address oft = frxUSD;
         address hop = 0x22beDD55A0D29Eb31e75C70F54fADa7Ca94339B9;
         uint32 eid = 30_184;
@@ -32,13 +33,11 @@ contract RemoteVaultDepositTest is FraxTest {
         remoteVaultHop = RemoteVaultHop(payable(address(vaultHopProxy)));
 
         // Deploy RemoteVaultDeposit
-        address depositImpl = address(new RemoteVaultDeposit());
-        bytes memory depositInitArgs = abi.encodeCall(
-            RemoteVaultDeposit.initialize,
-            (VAULT_CHAIN_ID, VAULT_ADDRESS, frxUSD, NAME, SYMBOL)
-        );
-        FraxUpgradeableProxy depositProxy = new FraxUpgradeableProxy(depositImpl, address(1), depositInitArgs);
-        vaultDeposit = RemoteVaultDeposit(payable(address(depositProxy)));
+        address vaultDepositAddress = remoteVaultHop.addRemoteVault(VAULT_CHAIN_ID, VAULT_ADDRESS, NAME, SYMBOL);
+        vaultDeposit = RemoteVaultDeposit(payable(vaultDepositAddress));
+
+        // add mock address of Fraxtal RemoteVaultHop
+        remoteVaultHop.setRemoteVaultHop(30_255, address(1));
     }
 
     receive() external payable {}
@@ -207,5 +206,39 @@ contract RemoteVaultDepositTest is FraxTest {
     function test_ReceiveETH() public {
         payable(address(vaultDeposit)).call{ value: 1 ether }("");
         assertEq(address(vaultDeposit).balance, 1 ether);
+    }
+
+    // =========== lzDust Tests ============
+    function test_Deposit_TrimsLzDust() public {
+        // Mint some asset to this contract
+        deal(frxUSD, address(this), 1e18 + 1234);
+        deal(address(this), 1e18); // ETH for fees
+
+        uint256 depositAmount = 1e18 + 1234; // include lzDust
+        uint256 expectedAmount = (depositAmount / 1e12) * 1e12; // trimmed amount
+
+        // Approve and deposit
+        IERC20(frxUSD).approve(address(vaultDeposit), depositAmount);
+        vaultDeposit.deposit{ value: 1e18 }(depositAmount, address(this));
+
+        // Check that the correct amount was sent to RemoteVaultHop
+        assertEq(IERC20(frxUSD).balanceOf(address(this)), 1234, "RemoteVaultHop should receive trimmed amount");
+    }
+
+    function test_Redeem_TrimsLzDust() public {
+        deal(address(this), 1e18); // ETH for fees
+
+        // Mint some vault deposit tokens to this contract
+        vm.prank(address(remoteVaultHop));
+        vaultDeposit.mint(address(this), 1e18 + 5678);
+
+        uint256 redeemAmount = 1e18 + 5678; // include lzDust
+        uint256 expectedAmount = (redeemAmount / 1e12) * 1e12; // trimmed amount
+
+        // Redeem
+        vaultDeposit.redeem{ value: 1e18 }(redeemAmount, address(this));
+
+        // Check that the correct amount of vault deposit tokens were burned
+        assertEq(vaultDeposit.balanceOf(address(this)), 5678, "Correct amount of tokens should be burned");
     }
 }

@@ -378,7 +378,7 @@ contract RemoteVaultHop is AccessControlEnumerableUpgradeable, IHopComposer {
         address _vault,
         string memory name,
         string memory symbol
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) returns (address) {
         RemoteVaultHopStorage storage $ = _getRemoteVaultHopStorage();
         if (address($.depositToken[_eid][_vault]) != address(0)) revert VaultExists();
         FraxUpgradeableProxy proxy = new FraxUpgradeableProxy(
@@ -388,6 +388,7 @@ contract RemoteVaultHop is AccessControlEnumerableUpgradeable, IHopComposer {
         );
         $.depositToken[_eid][_vault] = RemoteVaultDeposit(payable(address(proxy)));
         emit RemoteVaultAdded(_eid, _vault, name, symbol);
+        return address(proxy);
     }
 
     function getRemoteVaultGas(uint32 _eid, address _vault) public view returns (uint128) {

@@ -36,6 +36,7 @@ contract RemoteHopV2Test is FraxTest {
 
     uint32 constant FRAXTAL_EID = 30_255;
     uint32 constant ARBITRUM_EID = 30_110;
+    uint32 constant ETHEREUM_EID = 30_101;
 
     address constant frxUSD = 0x80Eede496655FB9047dd39d9f418d5483ED600df;
     address fraxtalHop;
@@ -356,6 +357,15 @@ contract RemoteHopV2Test is FraxTest {
         bytes memory data = "test data";
         uint256 fee = remoteHop.quote(oft, FRAXTAL_EID, bytes32(uint256(uint160(address(this)))), 1e18, 500_000, data);
         assertTrue(fee > 0, "Remote transfers with data should have non-zero fee");
+    }
+
+    function test_QuoteHop_DifferentDataLengths() public {
+        address oft = approvedOfts[0];
+        bytes memory data = "short data";
+        uint256 feeShort = remoteHop.quoteHop(ETHEREUM_EID, 500_000, data);
+        data = "this is a much longer data payload to test fee calculation based on data length";
+        uint256 feeLong = remoteHop.quoteHop(ETHEREUM_EID, 500_000, data);
+        assertTrue(feeLong > feeShort, "Longer data should incur higher fee");
     }
 
     // ============ RemoveDust Tests ============
