@@ -11,6 +11,7 @@ abstract contract DeployRemoteVaultHop is BaseScript {
     address HOPV2;
     uint32 EID;
     address proxyAdmin;
+    address msig;
 
     function run() public broadcaster {
         bytes memory initializeArgs = abi.encodeCall(
@@ -33,8 +34,14 @@ abstract contract DeployRemoteVaultHop is BaseScript {
                 30_255,
                 0x8EdA613EC96992D3C42BCd9aC2Ae58a92929Ceb2,
                 "Remote Fraxtal Fraxlend frxUSD (WFRAX)",
-                "rffrxUSD(WFRAX)"
+                "rffrxUSD(WFRAX)",
+                18
             );
         }
+
+        // grant DEFAULT_ADMIN_ROLE to msig and renounce
+        bytes32 DEFAULT_ADMIN_ROLE = 0x00;
+        vaultHop.grantRole(DEFAULT_ADMIN_ROLE, msig);
+        vaultHop.renounceRole(DEFAULT_ADMIN_ROLE, vm.addr(privateKey));
     }
 }

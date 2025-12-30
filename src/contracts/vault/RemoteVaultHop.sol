@@ -1,6 +1,7 @@
 pragma solidity ^0.8.0;
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import { AccessControlEnumerableUpgradeable } from "@openzeppelin/contracts-upgradeable/access/extensions/AccessControlEnumerableUpgradeable.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -286,7 +287,9 @@ contract RemoteVaultHop is AccessControlEnumerableUpgradeable, IHopComposer {
         uint256 out = IERC4626(message.remoteVault).deposit(message.amount, address(this));
         $.balance[message.remoteEid][message.remoteVault] += out;
 
-        uint256 _pricePerShare = IERC4626(message.remoteVault).convertToAssets(1e18);
+        uint256 _pricePerShare = IERC4626(message.remoteVault).convertToAssets(
+            10 ** IERC20Metadata(message.remoteVault).decimals()
+        );
         bytes memory _data = abi.encode(
             RemoteVaultMessage({
                 action: Action.DepositReturn,
@@ -318,7 +321,9 @@ contract RemoteVaultHop is AccessControlEnumerableUpgradeable, IHopComposer {
         uint256 out = IERC4626(message.remoteVault).redeem(message.amount, address(this), address(this));
         $.balance[message.remoteEid][message.remoteVault] -= message.amount;
         out = removeDust(out);
-        uint256 _pricePerShare = IERC4626(message.remoteVault).convertToAssets(1e18);
+        uint256 _pricePerShare = IERC4626(message.remoteVault).convertToAssets(
+            10 ** IERC20Metadata(message.remoteVault).decimals()
+        );
         bytes memory _data = abi.encode(
             RemoteVaultMessage({
                 action: Action.RedeemReturn,
@@ -378,14 +383,15 @@ contract RemoteVaultHop is AccessControlEnumerableUpgradeable, IHopComposer {
         uint32 _eid,
         address _vault,
         string memory name,
-        string memory symbol
+        string memory symbol,
+        uint8 decimals
     ) external onlyRole(DEFAULT_ADMIN_ROLE) returns (address) {
         RemoteVaultHopStorage storage $ = _getRemoteVaultHopStorage();
         if (address($.depositToken[_eid][_vault]) != address(0)) revert VaultExists();
         FraxUpgradeableProxy proxy = new FraxUpgradeableProxy(
             address($.implementation),
             $.proxyAdmin,
-            abi.encodeCall(RemoteVaultDeposit.initialize, (_eid, _vault, address($.TOKEN), name, symbol))
+            abi.encodeCall(RemoteVaultDeposit.initialize, (_eid, _vault, address($.TOKEN), name, symbol, decimals))
         );
         $.depositToken[_eid][_vault] = RemoteVaultDeposit(payable(address(proxy)));
         emit RemoteVaultAdded(_eid, _vault, name, symbol);
@@ -404,6 +410,11 @@ contract RemoteVaultHop is AccessControlEnumerableUpgradeable, IHopComposer {
         if (address($.depositToken[_eid][_vault]) == address(0)) revert InvalidVault();
         $.remoteGas[_eid][_vault] = _gas;
         emit RemoteGasSet(_eid, _vault, _gas);
+    }
+
+    function setProxyAdmin(address _proxyAdmin) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        RemoteVaultHopStorage storage $ = _getRemoteVaultHopStorage();
+        $.proxyAdmin = _proxyAdmin;
     }
 
     function recover(address _target, uint256 _value, bytes memory _data) external onlyRole(DEFAULT_ADMIN_ROLE) {

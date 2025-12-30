@@ -39,7 +39,8 @@ contract RemoteVaultTest is FraxTest {
             30_255,
             0x8EdA613EC96992D3C42BCd9aC2Ae58a92929Ceb2,
             "Fraxlend Interest Bearing frxUSD (Frax Share) - 9",
-            "ffrxUSD(FXS)-9"
+            "ffrxUSD(FXS)-9",
+            18
         );
     }
 

@@ -35,7 +35,7 @@ contract RemoteVaultHopTest is FraxTest {
         remoteVaultHop.setRemoteVaultHop(FRAXTAL_EID, address(remoteVaultHop));
 
         // Add remote vault
-        remoteVaultHop.addRemoteVault(FRAXTAL_EID, VAULT_ADDRESS, "Test Vault", "TV");
+        remoteVaultHop.addRemoteVault(FRAXTAL_EID, VAULT_ADDRESS, "Test Vault", "TV", 18);
     }
 
     receive() external payable {}
@@ -65,7 +65,7 @@ contract RemoteVaultHopTest is FraxTest {
         address testVault = address(0x789);
 
         remoteVaultHop.setRemoteVaultHop(testEid, address(remoteVaultHop));
-        remoteVaultHop.addRemoteVault(testEid, testVault, "Test Vault 2", "TV2");
+        remoteVaultHop.addRemoteVault(testEid, testVault, "Test Vault 2", "TV2", 18);
 
         RemoteVaultDeposit depositToken = remoteVaultHop.depositToken(testEid, testVault);
         assertTrue(address(depositToken) != address(0), "Deposit token should be created");
@@ -76,12 +76,12 @@ contract RemoteVaultHopTest is FraxTest {
     function test_AddRemoteVault_OnlyAdmin() public {
         vm.prank(address(0xdead));
         vm.expectRevert();
-        remoteVaultHop.addRemoteVault(30_110, address(0x789), "Test", "TST");
+        remoteVaultHop.addRemoteVault(30_110, address(0x789), "Test", "TST", 18);
     }
 
     function test_AddRemoteVault_AlreadyExists() public {
         vm.expectRevert(RemoteVaultHop.VaultExists.selector);
-        remoteVaultHop.addRemoteVault(FRAXTAL_EID, VAULT_ADDRESS, "Duplicate", "DUP");
+        remoteVaultHop.addRemoteVault(FRAXTAL_EID, VAULT_ADDRESS, "Duplicate", "DUP", 18);
     }
 
     function test_AddRemoteVault_EmitsEvent() public {
@@ -94,7 +94,7 @@ contract RemoteVaultHopTest is FraxTest {
 
         vm.expectEmit(true, true, true, true);
         emit RemoteVaultHop.RemoteVaultAdded(testEid, testVault, name, symbol);
-        remoteVaultHop.addRemoteVault(testEid, testVault, name, symbol);
+        remoteVaultHop.addRemoteVault(testEid, testVault, name, symbol, 18);
     }
 
     function test_SetRemoteVaultHop() public {

@@ -33,7 +33,7 @@ contract RemoteVaultDepositTest is FraxTest {
         remoteVaultHop = RemoteVaultHop(payable(address(vaultHopProxy)));
 
         // Deploy RemoteVaultDeposit
-        address vaultDepositAddress = remoteVaultHop.addRemoteVault(VAULT_CHAIN_ID, VAULT_ADDRESS, NAME, SYMBOL);
+        address vaultDepositAddress = remoteVaultHop.addRemoteVault(VAULT_CHAIN_ID, VAULT_ADDRESS, NAME, SYMBOL, 18);
         vaultDeposit = RemoteVaultDeposit(payable(vaultDepositAddress));
 
         // add mock address of Fraxtal RemoteVaultHop
@@ -48,11 +48,12 @@ contract RemoteVaultDepositTest is FraxTest {
         assertEq(vaultDeposit.name(), NAME, "Name should be set");
         assertEq(vaultDeposit.symbol(), SYMBOL, "Symbol should be set");
         assertEq(vaultDeposit.owner(), address(remoteVaultHop), "Owner should be RemoteVaultHop");
+        assertEq(vaultDeposit.decimals(), 18, "Decimals should be set");
     }
 
     function test_CannotReinitialize() public {
         vm.expectRevert();
-        vaultDeposit.initialize(VAULT_CHAIN_ID, VAULT_ADDRESS, ASSET, "New Name", "NEW");
+        vaultDeposit.initialize(VAULT_CHAIN_ID, VAULT_ADDRESS, ASSET, "New Name", "NEW", 18);
     }
 
     // ============ Minting Tests ============
@@ -222,6 +223,22 @@ contract RemoteVaultDepositTest is FraxTest {
     function test_ReceiveETH() public {
         payable(address(vaultDeposit)).call{ value: 1 ether }("");
         assertEq(address(vaultDeposit).balance, 1 ether);
+    }
+
+    // ============ Decimals Tests ============
+
+    function test_Decimals_Non18() public {
+        // Deploy RemoteVaultDeposit with 6 decimals
+        address vaultDepositAddress = remoteVaultHop.addRemoteVault(
+            VAULT_CHAIN_ID,
+            address(1),
+            "6 Decimals Vault",
+            "6DV",
+            6
+        );
+        RemoteVaultDeposit vaultDeposit6 = RemoteVaultDeposit(payable(vaultDepositAddress));
+
+        assertEq(vaultDeposit6.decimals(), 6, "Decimals should be set to 6");
     }
 
     // =========== lzDust Tests ============

@@ -23,6 +23,8 @@ import { OwnableUpgradeable } from "@openzeppelin/contracts-upgradeable/access/O
 /// @notice ERC20 token representing deposits in remote vaults, can only be minted/burned by the RemoteVault contract
 contract RemoteVaultDeposit is ERC20Upgradeable, OwnableUpgradeable {
     struct RemoteVaultDepositStorage {
+        /// @notice The amount of decimals for the token, matching the remote vault metadata
+        uint8 DECIMALS;
         /// @notice The RemoteVaultHop contract that controls this token
         address REMOTE_VAULT_HOP;
         /// @notice The chain ID where the vault is located
@@ -76,7 +78,8 @@ contract RemoteVaultDeposit is ERC20Upgradeable, OwnableUpgradeable {
         address _vaultAddress,
         address _asset,
         string memory _name,
-        string memory _symbol
+        string memory _symbol,
+        uint8 _decimals
     ) external initializer {
         __ERC20_init(_name, _symbol);
         __Ownable_init(msg.sender);
@@ -86,10 +89,16 @@ contract RemoteVaultDeposit is ERC20Upgradeable, OwnableUpgradeable {
         $.VAULT_CHAIN_ID = _vaultChainId;
         $.VAULT_ADDRESS = _vaultAddress;
         $.ASSET = _asset;
+        $.DECIMALS = _decimals;
     }
 
     /// @notice Receive ETH payments
     receive() external payable {}
+
+    function decimals() public view override returns (uint8) {
+        RemoteVaultDepositStorage storage $ = _getRemoteVaultDepositStorage();
+        return $.DECIMALS;
+    }
 
     /// @notice Mint tokens to a specific address
     /// @dev Can only be called by the RemoteVault contract (owner)
