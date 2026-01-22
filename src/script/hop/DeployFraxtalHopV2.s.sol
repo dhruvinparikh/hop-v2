@@ -9,7 +9,7 @@ import { RemoteAdmin } from "src/contracts/RemoteAdmin.sol";
 
 import { FraxUpgradeableProxy } from "frax-std/FraxUpgradeableProxy.sol";
 
-// forge script src/script/hop/Fraxtal/DeployFraxtalHopV2.s.sol --rpc-url https://rpc.frax.com --broadcast --verify --verifier etherscan --etherscan-api-key $TODO
+// forge script src/script/hop/DeployFraxtalHopV2.s.sol --rpc-url https://rpc.frax.com --broadcast --verify --verifier etherscan --etherscan-api-key $TODO
 contract DeployFraxtalHopV2 is BaseScript {
     address constant proxyAdmin = 0x223a681fc5c5522c85C96157c0efA18cd6c5405c;
     address constant msig = 0x5f25218ed9474b721d6a38c115107428E832fA2E;

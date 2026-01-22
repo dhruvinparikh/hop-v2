@@ -3,7 +3,7 @@ pragma solidity 0.8.23;
 
 import { DeployRemoteHopV2 } from "./DeployRemoteHopV2.s.sol";
 
-// forge script src/script/hop/Remote/DeployRemoteHopV2Arbitrum.s.sol --rpc-url https://arbitrum.public.blockpi.network/v1/rpc/public --broadcast --verify --verifier etherscan --etherscan-api-key $ARBISCAN_API_KEY
+// forge script src/script/hop/DeployRemoteHopV2Arbitrum.s.sol --rpc-url https://arbitrum.public.blockpi.network/v1/rpc/public --broadcast --verify --verifier etherscan --etherscan-api-key $ARBISCAN_API_KEY
 contract DeployRemoteHopV2Arbitrum is DeployRemoteHopV2 {
     constructor() {
         EXECUTOR = 0x31CAe3B7fB82d847621859fb1585353c5720660D;

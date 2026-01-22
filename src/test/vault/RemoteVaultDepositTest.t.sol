@@ -17,11 +17,12 @@ contract RemoteVaultDepositTest is FraxTest {
     string constant NAME = "Test Vault Deposit";
     string constant SYMBOL = "TVD";
 
+    address constant frxUSD = 0xe5020A6d073a794B6E7f05678707dE47986Fb0b6;
+
     function setUp() public {
         // Deploy RemoteVaultHop as the owner
-        vm.createSelectFork(vm.envString("BASE_MAINNET_URL"), 36_482_910);
+        vm.createSelectFork(vm.envString("BASE_MAINNET_URL"), 40_000_000);
 
-        address frxUSD = 0xe5020A6d073a794B6E7f05678707dE47986Fb0b6;
         address oft = frxUSD;
         address hop = 0x22beDD55A0D29Eb31e75C70F54fADa7Ca94339B9;
         uint32 eid = 30_184;
@@ -32,13 +33,11 @@ contract RemoteVaultDepositTest is FraxTest {
         remoteVaultHop = RemoteVaultHop(payable(address(vaultHopProxy)));
 
         // Deploy RemoteVaultDeposit
-        address depositImpl = address(new RemoteVaultDeposit());
-        bytes memory depositInitArgs = abi.encodeCall(
-            RemoteVaultDeposit.initialize,
-            (VAULT_CHAIN_ID, VAULT_ADDRESS, frxUSD, NAME, SYMBOL)
-        );
-        FraxUpgradeableProxy depositProxy = new FraxUpgradeableProxy(depositImpl, address(1), depositInitArgs);
-        vaultDeposit = RemoteVaultDeposit(payable(address(depositProxy)));
+        address vaultDepositAddress = remoteVaultHop.addRemoteVault(VAULT_CHAIN_ID, VAULT_ADDRESS, NAME, SYMBOL, 18);
+        vaultDeposit = RemoteVaultDeposit(payable(vaultDepositAddress));
+
+        // add mock address of Fraxtal RemoteVaultHop
+        remoteVaultHop.setRemoteVaultHop(30_255, address(1));
     }
 
     receive() external payable {}
@@ -48,12 +47,13 @@ contract RemoteVaultDepositTest is FraxTest {
     function test_Initialization() public {
         assertEq(vaultDeposit.name(), NAME, "Name should be set");
         assertEq(vaultDeposit.symbol(), SYMBOL, "Symbol should be set");
-        assertEq(vaultDeposit.owner(), address(this), "Owner should be deployer");
+        assertEq(vaultDeposit.owner(), address(remoteVaultHop), "Owner should be RemoteVaultHop");
+        assertEq(vaultDeposit.decimals(), 18, "Decimals should be set");
     }
 
     function test_CannotReinitialize() public {
         vm.expectRevert();
-        vaultDeposit.initialize(VAULT_CHAIN_ID, VAULT_ADDRESS, ASSET, "New Name", "NEW");
+        vaultDeposit.initialize(VAULT_CHAIN_ID, VAULT_ADDRESS, ASSET, "New Name", "NEW", 18);
     }
 
     // ============ Minting Tests ============
@@ -62,6 +62,7 @@ contract RemoteVaultDepositTest is FraxTest {
         address recipient = address(0x123);
         uint256 amount = 100e18;
 
+        vm.prank(address(remoteVaultHop));
         vaultDeposit.mint(recipient, amount);
         assertEq(vaultDeposit.balanceOf(recipient), amount, "Recipient should receive minted tokens");
     }
@@ -70,9 +71,10 @@ contract RemoteVaultDepositTest is FraxTest {
         address recipient1 = address(0x123);
         address recipient2 = address(0x456);
 
+        vm.startPrank(address(remoteVaultHop));
         vaultDeposit.mint(recipient1, 100e18);
         vaultDeposit.mint(recipient2, 200e18);
-
+        vm.stopPrank();
         assertEq(vaultDeposit.balanceOf(recipient1), 100e18);
         assertEq(vaultDeposit.balanceOf(recipient2), 200e18);
         assertEq(vaultDeposit.totalSupply(), 300e18);
@@ -87,6 +89,8 @@ contract RemoteVaultDepositTest is FraxTest {
     function test_Mint_EmitsEvent() public {
         address recipient = address(0x123);
         uint256 amount = 100e18;
+
+        vm.prank(address(remoteVaultHop));
 
         vm.expectEmit(true, true, true, true);
         emit RemoteVaultDeposit.Mint(recipient, amount);
@@ -103,6 +107,7 @@ contract RemoteVaultDepositTest is FraxTest {
         uint64 timestamp = uint64(block.timestamp);
         uint128 pps = 1.1e18;
 
+        vm.prank(vaultDeposit.owner());
         vaultDeposit.setPricePerShare(timestamp, pps);
         assertEq(vaultDeposit.pricePerShare(), pps, "Price per share should be updated");
     }
@@ -117,6 +122,8 @@ contract RemoteVaultDepositTest is FraxTest {
         uint64 timestamp = uint64(block.timestamp);
         uint128 pps = 1.1e18;
 
+        vm.prank(vaultDeposit.owner());
+
         vm.expectEmit(true, true, true, true);
         emit RemoteVaultDeposit.PricePerShareUpdated(timestamp, pps);
         vaultDeposit.setPricePerShare(timestamp, pps);
@@ -125,27 +132,32 @@ contract RemoteVaultDepositTest is FraxTest {
     function test_SetPricePerShare_IgnoresOldTimestamp() public {
         uint64 timestamp1 = uint64(block.timestamp);
         uint128 pps1 = 1.1e18;
+        vm.prank(vaultDeposit.owner());
         vaultDeposit.setPricePerShare(timestamp1, pps1);
 
         // Try to set with older timestamp
         uint64 timestamp2 = timestamp1 - 100;
         uint128 pps2 = 1.2e18;
+        vm.prank(vaultDeposit.owner());
         vaultDeposit.setPricePerShare(timestamp2, pps2);
 
         assertEq(vaultDeposit.pricePerShare(), pps1, "Should not update with older timestamp");
     }
 
     function test_SetPricePerShare_IgnoresZeroPrice() public {
+        vm.prank(vaultDeposit.owner());
         vaultDeposit.setPricePerShare(uint64(block.timestamp), 0);
         assertEq(vaultDeposit.pricePerShare(), 0, "Should not update with zero price");
     }
 
     function test_PricePerShare_Interpolation() public {
         // Set initial price
+        vm.prank(vaultDeposit.owner());
         vaultDeposit.setPricePerShare(uint64(block.timestamp), 1e18);
 
         // Move to block 50 and set new price
         vm.roll(block.number + 50);
+        vm.prank(vaultDeposit.owner());
         vaultDeposit.setPricePerShare(uint64(block.timestamp + 50), 1.1e18);
 
         uint256 pps = vaultDeposit.pricePerShare();
@@ -164,10 +176,12 @@ contract RemoteVaultDepositTest is FraxTest {
 
     function test_PricePerShare_NegativeInterpolation() public {
         // Set initial price
+        vm.prank(vaultDeposit.owner());
         vaultDeposit.setPricePerShare(uint64(block.timestamp), 1.1e18);
 
         // Move forward and set lower price
         vm.roll(block.number + 50);
+        vm.prank(vaultDeposit.owner());
         vaultDeposit.setPricePerShare(uint64(block.timestamp + 50), 1e18);
 
         // Move to halfway point
@@ -180,6 +194,7 @@ contract RemoteVaultDepositTest is FraxTest {
 
     function test_Transfer() public {
         address recipient = address(0x456);
+        vm.prank(address(remoteVaultHop));
         vaultDeposit.mint(address(this), 100e18);
 
         vaultDeposit.transfer(recipient, 50e18);
@@ -192,6 +207,7 @@ contract RemoteVaultDepositTest is FraxTest {
         address spender = address(this);
         address recipient = address(0x456);
 
+        vm.prank(address(remoteVaultHop));
         vaultDeposit.mint(owner, 100e18);
 
         vm.prank(owner);
@@ -207,5 +223,37 @@ contract RemoteVaultDepositTest is FraxTest {
     function test_ReceiveETH() public {
         payable(address(vaultDeposit)).call{ value: 1 ether }("");
         assertEq(address(vaultDeposit).balance, 1 ether);
+    }
+
+    // ============ Decimals Tests ============
+
+    function test_Decimals_Non18() public {
+        // Deploy RemoteVaultDeposit with 6 decimals
+        address vaultDepositAddress = remoteVaultHop.addRemoteVault(
+            VAULT_CHAIN_ID,
+            address(1),
+            "6 Decimals Vault",
+            "6DV",
+            6
+        );
+        RemoteVaultDeposit vaultDeposit6 = RemoteVaultDeposit(payable(vaultDepositAddress));
+
+        assertEq(vaultDeposit6.decimals(), 6, "Decimals should be set to 6");
+    }
+
+    // =========== lzDust Tests ============
+    function test_Deposit_TrimsLzDust() public {
+        // Mint some asset to this contract
+        deal(frxUSD, address(this), 1e18 + 1234);
+        deal(address(this), 1e18); // ETH for fees
+
+        uint256 depositAmount = 1e18 + 1234; // include lzDust
+
+        // Approve and deposit
+        IERC20(frxUSD).approve(address(vaultDeposit), depositAmount);
+        vaultDeposit.deposit{ value: 1e18 }(depositAmount, address(this));
+
+        // Check that the dust remains in the remoteVaultHop
+        assertEq(IERC20(frxUSD).balanceOf(address(remoteVaultHop)), 1234, "Dust should remain in the hop");
     }
 }
