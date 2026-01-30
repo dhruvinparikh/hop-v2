@@ -39,6 +39,8 @@
     "@layerzerolabs/lz-evm-messagelib-v2": "^3.0.115",
     "@layerzerolabs/lz-evm-v1-0.7": "^3.0.115",
     "@layerzerolabs/lz-v2-utilities": "^3.0.115",
+    "@layerzerolabs/oapp-alt-evm": "0.0.5",
+    "@layerzerolabs/oft-alt-evm": "0.0.5",
     "@layerzerolabs/oft-evm-upgradeable": "^4.0.2",
     "@layerzerolabs/test-devtools-evm-foundry": "~8.0.0",
     "@openzeppelin/contracts-4.8.1": "npm:@openzeppelin/contracts@4.8.1",

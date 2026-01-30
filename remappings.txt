@@ -11,3 +11,5 @@ tempo-std/=node_modules/tempoxyz/tempo-std/src/
 @layerzerolabs/lz-evm-protocol-v2/=node_modules/@layerzerolabs/lz-evm-protocol-v2/
 @layerzerolabs/oapp-evm/=node_modules/@layerzerolabs/oapp-evm/
 @layerzerolabs/oft-evm/=node_modules/@layerzerolabs/oft-evm/
+@layerzerolabs/oapp-alt-evm/=node_modules/@layerzerolabs/oapp-alt-evm/
+@layerzerolabs/oft-alt-evm/=node_modules/@layerzerolabs/oft-alt-evm/
