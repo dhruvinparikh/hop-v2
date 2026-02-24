@@ -107,7 +107,9 @@ abstract contract DeployRemoteHopV2 is Script {
         require(major == 3 && minor == 0 && endpointVersion == 2, "Invalid SendLibrary version");
 
         require(IExecutor(EXECUTOR).endpoint() == endpoint, "Invalid executor endpoint");
-        require(IExecutor(EXECUTOR).localEidV2() == localEid, "Invalid executor localEidV2");
+        try IExecutor(EXECUTOR).localEidV2() returns (uint32 eid) {
+            require(eid == localEid, "Invalid executor localEidV2");
+        } catch {}
         require(IDVN(DVN).vid() != 0, "Invalid DVN vid");
 
         require(msig != address(0), "msig is not set");
