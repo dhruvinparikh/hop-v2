@@ -1314,7 +1314,7 @@ rvd.redeem{value: fee}(shares);
 
 Pause `RemoteHopV2` on Base remotely from the Fraxtal multisig.
 
-```olidity
+```solidity
 // On Fraxtal, called by the multisig
 IHopV2 fraxtalHop = IHopV2(FRAXTAL_HOP);
 address oft = FRX_USD_FRAXTAL;
