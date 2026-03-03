@@ -17,7 +17,7 @@ import { FraxUpgradeableProxy, ITransparentUpgradeableProxy } from "frax-std/Fra
 /// @dev Expected addresses:
 ///      Implementation: 0x00000001Fc41bB036e7e894F70879F7cA8a4adFc
 ///      Proxy:          0x0000000175B6B4DDe153c7aE06E4F0b27eEe42DF
-///      RemoteAdmin:    0x0000000221a0682d34a635ecAa38C98b31EfFc51
+///      RemoteAdmin:    0x000000000E0E120FCAc7b4d98e9E35E1DE6fdadb
 ///
 /// Simulate:
 ///   forge script src/script/hop/DeployRemoteHopV2Abstract.s.sol --rpc-url https://api.mainnet.abs.xyz --gcp --sender 0x54f9b12743a7deec0ea48721683cbebedc6e17bc --zksync
@@ -30,7 +30,7 @@ contract DeployRemoteHopV2Abstract is DeployRemoteHopV2 {
         endpoint = 0x5c6cfF4b7C49805F8295Ff73C204ac83f3bC4AE7;
         localEid = 30_324;
 
-        msig = 0x66716ae60898dD4479B52aC4d92ef16C1821f420;
+        msig = 0xcC20eAE3CdC554E96291708B362dF349CC443808;
 
         EXECUTOR = 0x643E1471f37c4680Df30cF0C540Cd379a0fF58A5;
         DVN = 0xF4DA94b4EE9D8e209e3bf9f469221CE2731A7112;
@@ -44,55 +44,16 @@ contract DeployRemoteHopV2Abstract is DeployRemoteHopV2 {
         fpiOft = 0x580F2ee1476eDF4B1760bd68f6AaBaD57dec420E;
     }
 
-    /// @dev Override with zkEVM-specific CREATE2 salts (mined for 0x00000000 prefix via create2crunch --zksync)
-    function _deployRemoteHopV2(
-        address _proxyAdmin,
-        uint32 _localEid,
-        address _endpoint,
-        bytes32 _fraxtalHop,
-        uint32 _numDVNs,
-        address _EXECUTOR,
-        address _DVN,
-        address _TREASURY,
-        address[] memory _approvedOfts
-    ) internal override returns (address payable) {
-        bytes memory initializeArgs = abi.encodeCall(
-            RemoteHopV2.initialize,
-            (_localEid, _endpoint, _fraxtalHop, _numDVNs, _EXECUTOR, _DVN, _TREASURY, _approvedOfts)
-        );
-
-        address implementation = address(
-            new RemoteHopV2{ salt: bytes32(0x070c0543fb5ab610f6ecdaaae669b426a7e12436fecbfec15b6963bf54000010) }()
-        );
-        require(implementation == 0x00000001Fc41bB036e7e894F70879F7cA8a4adFc, "Implementation address mismatch");
-
-        FraxUpgradeableProxy proxy = new FraxUpgradeableProxy{
-            salt: bytes32(0x53a08a10d007da760c7dfc6c9b327cb1a5d871f9cd0dc1d98091831072010008)
-        }(implementation, msg.sender, "");
-        require(address(proxy) == 0x0000000175B6B4DDe153c7aE06E4F0b27eEe42DF, "Proxy address mismatch");
-
-        ITransparentUpgradeableProxy(address(proxy)).upgradeToAndCall(implementation, initializeArgs);
-        ITransparentUpgradeableProxy(address(proxy)).changeAdmin(_proxyAdmin);
-
-        // set solana enforced options
-        RemoteHopV2(payable(address(proxy))).setExecutorOptions(
-            30_168,
-            hex"0100210100000000000000000000000000030D40000000000000000000000000002DC6C0"
-        );
-
-        return payable(address(proxy));
-    }
-
     /// @dev Override with zkEVM-specific CREATE2 salt (mined for 0x00000000 prefix via create2crunch --zksync)
     function _deployRemoteAdmin(address remoteHop) internal override returns (address) {
         address remoteAdmin = address(
-            new RemoteAdmin{ salt: bytes32(0xde7132b04e420f266d0dd26cb34b7b4e2540d5fe9a55b55620fce04cdc018021) }(
+            new RemoteAdmin{ salt: bytes32(0xab7fd6176258a50512680a3874ed550f7dd1fc212481446a15583f637a1c0028) }(
                 frxUsdOft,
                 remoteHop,
                 FRAXTAL_MSIG
             )
         );
-        require(remoteAdmin == 0x0000000221a0682d34a635ecAa38C98b31EfFc51, "RemoteAdmin address mismatch");
+        require(remoteAdmin == 0x000000000E0E120FCAc7b4d98e9E35E1DE6fdadb, "RemoteAdmin address mismatch");
         return remoteAdmin;
     }
 }
