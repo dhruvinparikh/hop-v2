@@ -91,6 +91,11 @@ abstract contract TempoAltTokenBase {
     /// @param _endpointFee The fee in endpoint-native (LZEndpointDollar) units, as returned by quoteSend().
     /// @return The estimated amount of `_userToken` required.
     function quoteUserTokenFee(address _userToken, uint256 _endpointFee) external view returns (uint256) {
+        return _quoteUserTokenFee(_userToken, _endpointFee);
+    }
+
+    /// @dev Internal quote helper shared by execution-matching quotes and off-chain previews.
+    function _quoteUserTokenFee(address _userToken, uint256 _endpointFee) internal view returns (uint256) {
         if (_endpointFee == 0) return 0;
         if (_userToken == address(0)) _userToken = StdTokens.PATH_USD_ADDRESS;
         if (nativeToken.isWhitelistedToken(_userToken)) {

@@ -2,9 +2,8 @@
 pragma solidity ^0.8.0;
 
 import { SendParam, MessagingFee, IOFT } from "@fraxfinance/layerzero-v2-upgradeable/oapp/contracts/oft/interfaces/IOFT.sol";
-import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import { ITIP20 } from "@tempo/interfaces/ITIP20.sol";
 import { RemoteHopV2 } from "src/contracts/hop/RemoteHopV2.sol";
 import { HopMessage } from "src/contracts/hop/HopV2.sol";
 import { TempoAltTokenBase } from "src/contracts/base/TempoAltTokenBase.sol";
@@ -46,8 +45,9 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoAltTokenBase {
         // EndpointV2Alt uses ERC20 for gas, not native ETH
         if (msg.value > 0) revert OFTAltCore__msg_value_not_zero(msg.value);
 
-        // Adopt caller's gas token so the contract pays fees in the caller's chosen ERC20
-        StdPrecompiles.TIP_FEE_MANAGER.setUserToken(StdPrecompiles.TIP_FEE_MANAGER.userTokens(msg.sender));
+        // Adopt caller's resolved gas token so the contract pays fees in the same ERC20,
+        // including PATH_USD fallback when the user has no explicit token configured.
+        StdPrecompiles.TIP_FEE_MANAGER.setUserToken(_resolveUserToken());
 
         // --- Inlined from HopV2.sendOFT (skips _handleMsgValue) ---
         HopV2Storage storage $ = _getHopV2Storage();
@@ -64,7 +64,7 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoAltTokenBase {
         });
 
         _amountLD = removeDust(_oft, _amountLD);
-        if (_amountLD > 0) SafeERC20.safeTransferFrom(IERC20(IOFT(_oft).token()), msg.sender, address(this), _amountLD);
+        if (_amountLD > 0) ITIP20(IOFT(_oft).token()).transferFrom(msg.sender, address(this), _amountLD);
 
         if (_dstEid == $.localEid) {
             _sendLocal({ _oft: _oft, _amount: _amountLD, _hopMessage: hopMessage });
@@ -89,15 +89,29 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoAltTokenBase {
         uint128 _dstGas,
         bytes memory _data
     ) public view override returns (uint256) {
-        uint256 endpointFee = super.quote(_oft, _dstEid, _recipient, _amount, _dstGas, _data);
-        if (endpointFee == 0) return 0;
+        uint32 localEid_ = localEid();
+        if (_dstEid == localEid_) return 0;
+
+        HopMessage memory hopMessage = HopMessage({
+            srcEid: localEid_,
+            dstEid: _dstEid,
+            dstGas: _dstGas,
+            sender: bytes32(uint256(uint160(msg.sender))),
+            recipient: _recipient,
+            data: _data
+        });
+
+        SendParam memory sendParam = _generateSendParam({
+            _amountLD: removeDust(_oft, _amount),
+            _hopMessage: hopMessage
+        });
+        MessagingFee memory fee = IOFT(_oft).quoteSend(sendParam, false);
+        uint256 hopFeeOnFraxtal = (_dstEid == FRAXTAL_EID || localEid_ == FRAXTAL_EID)
+            ? 0
+            : quoteHop(_dstEid, _dstGas, _data);
 
         address userToken = _resolveUserToken();
-        if (nativeToken.isWhitelistedToken(userToken)) {
-            return endpointFee;
-        }
-        (, uint128 amountIn) = _findSwapTarget(userToken, SafeCast.toUint128(endpointFee));
-        return amountIn;
+        return _quoteUserTokenFee(userToken, fee.nativeFee) + _quoteUserTokenFee(userToken, hopFeeOnFraxtal);
     }
 
     /// @notice Preview the quote for an explicit user gas token.
@@ -112,18 +126,32 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoAltTokenBase {
         bytes memory _data,
         address _userToken
     ) public view returns (uint256) {
-        uint256 endpointFee = super.quote(_oft, _dstEid, _recipient, _amount, _dstGas, _data);
-        if (endpointFee == 0) return 0;
-        if (_userToken == address(0)) _userToken = StdTokens.PATH_USD_ADDRESS;
-        if (nativeToken.isWhitelistedToken(_userToken)) {
-            return endpointFee;
-        }
-        (, uint128 amountIn) = _findSwapTarget(_userToken, SafeCast.toUint128(endpointFee));
-        return amountIn;
+        uint32 localEid_ = localEid();
+        if (_dstEid == localEid_) return 0;
+
+        HopMessage memory hopMessage = HopMessage({
+            srcEid: localEid_,
+            dstEid: _dstEid,
+            dstGas: _dstGas,
+            sender: bytes32(uint256(uint160(msg.sender))),
+            recipient: _recipient,
+            data: _data
+        });
+
+        SendParam memory sendParam = _generateSendParam({
+            _amountLD: removeDust(_oft, _amount),
+            _hopMessage: hopMessage
+        });
+        MessagingFee memory fee = IOFT(_oft).quoteSend(sendParam, false);
+        uint256 hopFeeOnFraxtal = (_dstEid == FRAXTAL_EID || localEid_ == FRAXTAL_EID)
+            ? 0
+            : quoteHop(_dstEid, _dstGas, _data);
+
+        return _quoteUserTokenFee(_userToken, fee.nativeFee) + _quoteUserTokenFee(_userToken, hopFeeOnFraxtal);
     }
 
-    /// @dev Override to pay LZ fee in ERC20 via EndpointV2Alt instead of forwarding native ETH.
-    ///      Hop-fee revenue stays in the contract as wrapped LZEndpointDollar.
+    /// @dev Override to let the OFT pay its own endpoint fee in ERC20 via EndpointV2Alt.
+    ///      The hop separately retains its protocol fee as wrapped LZEndpointDollar.
     function _sendToDestination(
         address _oft,
         uint256 _amountLD,
@@ -146,14 +174,28 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoAltTokenBase {
             ? 0
             : quoteHop(_hopMessage.dstEid, _hopMessage.dstGas, _hopMessage.data);
 
-        // Pull total fee from user as ERC20, wrap to LZEndpointDollar held by this contract
-        _payNativeAltToken(fee.nativeFee + hopFeeOnFraxtal, address(this));
+        address userToken = _resolveUserToken();
+        address oftToken = IOFT(_oft).token();
+        uint256 oftFeeInUserToken = _quoteUserTokenFee(userToken, fee.nativeFee);
+        uint256 oftTokenAllowance = _amountLD;
 
-        // Forward only the LZ send fee to the endpoint; hop fee stays as protocol revenue
-        SafeERC20.safeTransfer(IERC20(address(nativeToken)), $.endpoint, fee.nativeFee);
+        // Fund the OFT's own _payNative() path from this hop contract so execution matches the real OFT flow.
+        if (oftFeeInUserToken > 0) {
+            ITIP20(userToken).transferFrom(msg.sender, address(this), oftFeeInUserToken);
+            if (userToken == oftToken) {
+                oftTokenAllowance += oftFeeInUserToken;
+            } else {
+                ITIP20(userToken).approve(_oft, oftFeeInUserToken);
+            }
+        }
+
+        // Collect hop-fee revenue separately; it remains on this contract as wrapped nativeToken.
+        if (hopFeeOnFraxtal > 0) {
+            _payNativeAltToken(hopFeeOnFraxtal, address(this));
+        }
 
         // Approve and send the OFT to Fraxtal hub
-        if (_amountLD > 0) SafeERC20.forceApprove(IERC20(IOFT(_oft).token()), _oft, _amountLD);
+        if (oftTokenAllowance > 0) ITIP20(oftToken).approve(_oft, oftTokenAllowance);
         IOFT(_oft).send{ value: 0 }(sendParam, fee, address(this));
 
         // Return 0 — native msg.value fee handling is bypassed on Tempo.

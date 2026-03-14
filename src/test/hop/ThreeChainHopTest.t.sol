@@ -1070,4 +1070,171 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
         // Restore alice's gas token
         _setUserGasToken(alice, StdTokens.PATH_USD_ADDRESS);
     }
+
+    /// @notice Tempo send works when the caller pays gas in the same token being bridged.
+    function test_Tempo_SendOFT_GasTokenMatchesOFTToken() public {
+        uint256 sendAmountTempo = 10e6;
+
+        StdPrecompiles.STABLECOIN_DEX.createPair(address(tempoToken));
+        _addDexLiquidity(address(tempoToken), 1_000_000e6);
+        tempoToken.mint(alice, 1_000_000e6);
+        _setUserGasToken(alice, address(tempoToken));
+
+        vm.startPrank(alice);
+
+        uint256 fee = remoteHopTempo.quote(
+            address(tempoAdapter),
+            FRAXTAL_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            sendAmountTempo,
+            0,
+            ""
+        );
+        assertGt(fee, 0, "Fee should be non-zero");
+
+        uint256 aliceTempoBefore = tempoToken.balanceOf(alice);
+        uint256 hopTempoBefore = tempoToken.balanceOf(address(remoteHopTempo));
+
+        IERC20(address(tempoToken)).approve(address(remoteHopTempo), type(uint256).max);
+        IERC20(address(tempoToken)).approve(address(tempoAdapter), type(uint256).max);
+
+        remoteHopTempo.sendOFT(
+            address(tempoAdapter),
+            FRAXTAL_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            sendAmountTempo,
+            0,
+            ""
+        );
+
+        vm.stopPrank();
+
+        assertEq(
+            aliceTempoBefore - tempoToken.balanceOf(alice),
+            sendAmountTempo + fee,
+            "Alice should pay bridge amount plus quoted fee in the same TIP20"
+        );
+        assertEq(
+            tempoToken.balanceOf(address(remoteHopTempo)),
+            hopTempoBefore,
+            "Hop contract should not retain the OFT token on direct sends"
+        );
+
+        verifyPackets(FRAXTAL_EID, addressToBytes32(address(fraxtalAdapter)));
+        assertEq(
+            fraxtalToken.balanceOf(bob),
+            initialBalance + 10e18,
+            "Bob should receive the bridged amount on Fraxtal"
+        );
+
+        _setUserGasToken(alice, StdTokens.PATH_USD_ADDRESS);
+    }
+
+    /// @notice Tempo send falls back to PATH_USD when no explicit user gas token is configured.
+    function test_Tempo_SendOFT_DefaultGasTokenFallback() public {
+        uint256 sendAmountTempo = 10e6;
+        address charlie = makeAddr("charlie");
+
+        tempoToken.mint(charlie, initialBalanceTempo);
+        StdTokens.PATH_USD.mint(charlie, 1_000_000e6);
+
+        vm.startPrank(charlie);
+
+        uint256 fee = remoteHopTempo.quote(
+            address(tempoAdapter),
+            FRAXTAL_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            sendAmountTempo,
+            0,
+            ""
+        );
+        assertGt(fee, 0, "Fee should be non-zero");
+
+        uint256 charliePathUsdBefore = StdTokens.PATH_USD.balanceOf(charlie);
+
+        IERC20(address(tempoToken)).approve(address(remoteHopTempo), sendAmountTempo);
+        IERC20(address(tempoToken)).approve(address(tempoAdapter), sendAmountTempo);
+        IERC20(StdTokens.PATH_USD_ADDRESS).approve(address(remoteHopTempo), fee);
+
+        remoteHopTempo.sendOFT(
+            address(tempoAdapter),
+            FRAXTAL_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            sendAmountTempo,
+            0,
+            ""
+        );
+
+        vm.stopPrank();
+
+        assertEq(
+            charliePathUsdBefore - StdTokens.PATH_USD.balanceOf(charlie),
+            fee,
+            "Unset user token should fall back to PATH_USD for execution"
+        );
+
+        verifyPackets(FRAXTAL_EID, addressToBytes32(address(fraxtalAdapter)));
+    }
+
+    /// @notice Repeated Tempo sends keep working when the OFT pulls fees from the hop contract.
+    function test_Tempo_SendOFT_RepeatedSends_NonWhitelistedGasToken() public {
+        uint256 sendAmountTempo = 10e6;
+
+        ITIP20 altGasToken = _createTIP20WithDexPair(
+            "RepeatGas",
+            "RGAS",
+            keccak256("test_Tempo_SendOFT_RepeatedSends_NonWhitelistedGasToken")
+        );
+        _addDexLiquidity(address(altGasToken), 1_000_000e6);
+        altGasToken.mint(alice, 1_000_000e6);
+        _setUserGasToken(alice, address(altGasToken));
+
+        vm.startPrank(alice);
+        IERC20(address(altGasToken)).approve(address(remoteHopTempo), type(uint256).max);
+        IERC20(address(tempoToken)).approve(address(remoteHopTempo), type(uint256).max);
+        IERC20(address(tempoToken)).approve(address(tempoAdapter), type(uint256).max);
+
+        for (uint256 i = 0; i < 2; i++) {
+            uint256 fee = remoteHopTempo.quote(
+                address(tempoAdapter),
+                FRAXTAL_EID,
+                OFTMsgCodec.addressToBytes32(bob),
+                sendAmountTempo,
+                0,
+                ""
+            );
+            uint256 aliceAltGasBefore = altGasToken.balanceOf(alice);
+
+            remoteHopTempo.sendOFT(
+                address(tempoAdapter),
+                FRAXTAL_EID,
+                OFTMsgCodec.addressToBytes32(bob),
+                sendAmountTempo,
+                0,
+                ""
+            );
+
+            assertEq(
+                aliceAltGasBefore - altGasToken.balanceOf(alice),
+                fee,
+                "Each send should consume the quoted non-whitelisted gas fee"
+            );
+            assertEq(
+                altGasToken.balanceOf(address(remoteHopTempo)),
+                0,
+                "Hop contract should not retain user gas token after OFT fee pull"
+            );
+
+            verifyPackets(FRAXTAL_EID, addressToBytes32(address(fraxtalAdapter)));
+        }
+        vm.stopPrank();
+
+        assertEq(
+            fraxtalToken.balanceOf(bob),
+            initialBalance + 20e18,
+            "Bob should receive both repeated sends on Fraxtal"
+        );
+
+        _setUserGasToken(alice, StdTokens.PATH_USD_ADDRESS);
+    }
 }

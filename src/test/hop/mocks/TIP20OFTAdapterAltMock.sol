@@ -89,20 +89,13 @@ contract TIP20OFTAdapterAltMock is OFTAdapter {
         return 6;
     }
 
-    /// @dev Override _payNative to use ERC20 token for gas payment
-    ///      Checks if endpoint already has enough balance (pre-paid by Hop), otherwise pulls from msg.sender
+    /// @dev Override _payNative to use ERC20 token for gas payment.
+    ///      This mock intentionally matches the real Tempo OFT flow and always pulls from msg.sender.
     function _payNative(uint256 _nativeFee) internal virtual override returns (uint256) {
         if (_nativeFee == 0) return 0;
         if (nativeToken == address(0)) revert NativeTokenUnavailable();
 
-        // Check if endpoint already has sufficient balance (Hop pre-paid the fee)
-        uint256 endpointBalance = IERC20(nativeToken).balanceOf(address(endpoint));
-        if (endpointBalance >= _nativeFee) {
-            // Fee already paid by Hop, no additional payment needed
-            return 0;
-        }
-
-        // Otherwise, pull ERC20 tokens from msg.sender to endpoint
+        // Pull ERC20 tokens from msg.sender to endpoint
         IERC20(nativeToken).transferFrom(msg.sender, address(endpoint), _nativeFee);
         return 0;
     }

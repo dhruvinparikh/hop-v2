@@ -2,8 +2,6 @@
 pragma solidity 0.8.26;
 
 import { SendParam, MessagingFee, IOFT } from "@fraxfinance/layerzero-v2-upgradeable/oapp/contracts/oft/interfaces/IOFT.sol";
-import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import { IOAppComposer } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppComposer.sol";
 import { OFTComposeMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
@@ -24,7 +22,6 @@ interface IEndpointV2Alt {
 /// @notice Mock version of RemoteHopV2Tempo with configurable hub EID for testing
 /// @dev Allows overriding FRAXTAL_EID so tests can use mock endpoint EIDs (1, 2, 3)
 contract RemoteHopV2TempoMock is HopV2, IOAppComposer {
-    using SafeERC20 for IERC20;
     using OptionsBuilder for bytes;
 
     /// @notice Configurable hub EID (production uses hardcoded 30255)
@@ -94,20 +91,8 @@ contract RemoteHopV2TempoMock is HopV2, IOAppComposer {
         // Use HUB_EID instead of hardcoded FRAXTAL_EID
         uint256 hopFeeOnHub = (_dstEid == HUB_EID || localEid_ == HUB_EID) ? 0 : quoteHop(_dstEid, _dstGas, _data);
 
-        uint256 endpointFee = fee.nativeFee + hopFeeOnHub;
-        if (endpointFee == 0) return 0;
-
-        // Translate to user-token units (handle unset gas token as whitelisted)
         address userToken = StdPrecompiles.TIP_FEE_MANAGER.userTokens(msg.sender);
-        if (userToken == address(0) || userToken == nativeToken) {
-            return endpointFee;
-        }
-        uint128 amountIn = StdPrecompiles.STABLECOIN_DEX.quoteSwapExactAmountOut({
-            tokenIn: userToken,
-            tokenOut: nativeToken,
-            amountOut: SafeCast.toUint128(endpointFee)
-        });
-        return amountIn;
+        return _quoteUserTokenAmount(userToken, fee.nativeFee) + _quoteUserTokenAmount(userToken, hopFeeOnHub);
     }
 
     /// @notice Preview the quote for an explicit user gas token.
@@ -141,19 +126,7 @@ contract RemoteHopV2TempoMock is HopV2, IOAppComposer {
 
         uint256 hopFeeOnHub = (_dstEid == HUB_EID || localEid_ == HUB_EID) ? 0 : quoteHop(_dstEid, _dstGas, _data);
 
-        uint256 endpointFee = fee.nativeFee + hopFeeOnHub;
-        if (endpointFee == 0) return 0;
-
-        if (_userToken == address(0)) _userToken = StdTokens.PATH_USD_ADDRESS;
-        if (_userToken == nativeToken) {
-            return endpointFee;
-        }
-        uint128 amountIn = StdPrecompiles.STABLECOIN_DEX.quoteSwapExactAmountOut({
-            tokenIn: _userToken,
-            tokenOut: nativeToken,
-            amountOut: SafeCast.toUint128(endpointFee)
-        });
-        return amountIn;
+        return _quoteUserTokenAmount(_userToken, fee.nativeFee) + _quoteUserTokenAmount(_userToken, hopFeeOnHub);
     }
 
     /// @notice Send an OFT to a destination with encoded data
@@ -172,8 +145,11 @@ contract RemoteHopV2TempoMock is HopV2, IOAppComposer {
         // EndpointV2Alt uses ERC20 for gas, not native ETH
         if (msg.value > 0) revert MsgValueNotZero(msg.value);
 
-        // Adopt caller's gas token so the contract pays fees in the caller's chosen ERC20
-        StdPrecompiles.TIP_FEE_MANAGER.setUserToken(StdPrecompiles.TIP_FEE_MANAGER.userTokens(msg.sender));
+        // Adopt caller's resolved gas token so the contract pays fees in the same ERC20,
+        // including PATH_USD fallback when the user has no explicit token configured.
+        address userToken = StdPrecompiles.TIP_FEE_MANAGER.userTokens(msg.sender);
+        if (userToken == address(0)) userToken = StdTokens.PATH_USD_ADDRESS;
+        StdPrecompiles.TIP_FEE_MANAGER.setUserToken(userToken);
 
         // --- Inlined from HopV2.sendOFT (skips _handleMsgValue) ---
         HopV2Storage storage $ = _getHopV2Storage();
@@ -190,7 +166,7 @@ contract RemoteHopV2TempoMock is HopV2, IOAppComposer {
         });
 
         _amountLD = removeDust(_oft, _amountLD);
-        if (_amountLD > 0) SafeERC20.safeTransferFrom(IERC20(IOFT(_oft).token()), msg.sender, address(this), _amountLD);
+        if (_amountLD > 0) ITIP20(IOFT(_oft).token()).transferFrom(msg.sender, address(this), _amountLD);
 
         if (_dstEid == $.localEid) {
             _sendLocal({ _oft: _oft, _amount: _amountLD, _hopMessage: hopMessage });
@@ -231,7 +207,7 @@ contract RemoteHopV2TempoMock is HopV2, IOAppComposer {
         }
     }
 
-    /// @dev Override to pay LZ fee in ERC20 via EndpointV2Alt instead of forwarding native ETH.
+    /// @dev Override to let the OFT pull its own endpoint fee from this hop contract.
     ///      Hop-fee revenue stays in the contract.
     function _sendToDestination(
         address _oft,
@@ -252,16 +228,25 @@ contract RemoteHopV2TempoMock is HopV2, IOAppComposer {
             ? 0
             : quoteHop(_hopMessage.dstEid, _hopMessage.dstGas, _hopMessage.data);
 
-        // Single pull from user into this contract, then split: endpoint gets fee.nativeFee, contract retains hopFee
-        uint256 totalFee = fee.nativeFee + hopFeeOnFraxtal;
-        if (totalFee > 0) {
-            _payNativeFee(totalFee, address(this));
-            // Forward only the LZ send fee to the endpoint; hop fee stays as protocol revenue
-            SafeERC20.safeTransfer(IERC20(nativeToken), $.endpoint, fee.nativeFee);
+        address oftToken = IOFT(_oft).token();
+        uint256 oftTokenAllowance = _amountLD;
+
+        if (fee.nativeFee > 0) {
+            _payNativeFee(fee.nativeFee, address(this));
+            if (nativeToken == oftToken) {
+                oftTokenAllowance += fee.nativeFee;
+            }
+        }
+
+        if (hopFeeOnFraxtal > 0) {
+            _payNativeFee(hopFeeOnFraxtal, address(this));
         }
 
         // Approve and send the OFT to Fraxtal hub
-        if (_amountLD > 0) SafeERC20.forceApprove(IERC20(IOFT(_oft).token()), _oft, _amountLD);
+        if (fee.nativeFee > 0 && nativeToken != oftToken) {
+            ITIP20(nativeToken).approve(_oft, fee.nativeFee);
+        }
+        if (oftTokenAllowance > 0) ITIP20(oftToken).approve(_oft, oftTokenAllowance);
         IOFT(_oft).send{ value: 0 }(sendParam, fee, address(this));
 
         // Return 0 — native msg.value fee handling is bypassed on Tempo.
@@ -272,6 +257,7 @@ contract RemoteHopV2TempoMock is HopV2, IOAppComposer {
     ///      Pulls user's gas token, swaps if needed, and sends wrapped LZEndpointDollar to `_recipient`.
     function _payNativeFee(uint256 _amount, address _recipient) internal {
         address userToken = StdPrecompiles.TIP_FEE_MANAGER.userTokens(msg.sender);
+        if (userToken == address(0)) userToken = StdTokens.PATH_USD_ADDRESS;
 
         if (userToken == nativeToken) {
             // User's gas token is the endpoint's native token, transfer directly to recipient
@@ -295,6 +281,20 @@ contract RemoteHopV2TempoMock is HopV2, IOAppComposer {
             // Transfer swapped native token to recipient
             ITIP20(nativeToken).transfer(_recipient, _amount);
         }
+    }
+
+    function _quoteUserTokenAmount(address _userToken, uint256 _nativeFee) internal view returns (uint256) {
+        if (_nativeFee == 0) return 0;
+        if (_userToken == address(0)) _userToken = StdTokens.PATH_USD_ADDRESS;
+        if (_userToken == nativeToken) {
+            return _nativeFee;
+        }
+        return
+            StdPrecompiles.STABLECOIN_DEX.quoteSwapExactAmountOut({
+                tokenIn: _userToken,
+                tokenOut: nativeToken,
+                amountOut: SafeCast.toUint128(_nativeFee)
+            });
     }
 
     /// @notice Handles incoming composed messages from LayerZero
