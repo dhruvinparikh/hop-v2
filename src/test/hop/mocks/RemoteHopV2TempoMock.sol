@@ -58,7 +58,7 @@ contract RemoteHopV2TempoMock is HopV2, IOAppComposer {
     // receive ETH (shouldn't be used on Tempo but keeping for interface compatibility)
     receive() external payable {}
 
-    /// @notice Override quote to return fees in the caller's resolved user-token units.
+    /// @notice Override quote to return fees in native-LZ units.
     /// @dev Cannot use super.quote() because the base HopV2 has hardcoded FRAXTAL_EID (30255)
     ///      while the mock uses configurable HUB_EID. Replicates the logic with HUB_EID.
     function quote(
@@ -69,35 +69,10 @@ contract RemoteHopV2TempoMock is HopV2, IOAppComposer {
         uint128 _dstGas,
         bytes memory _data
     ) public view override returns (uint256) {
-        uint32 localEid_ = localEid();
-        if (_dstEid == localEid_) return 0;
-
-        // Build hop message and send param using mock's HUB_EID
-        HopMessage memory hopMessage = HopMessage({
-            srcEid: localEid_,
-            dstEid: _dstEid,
-            dstGas: _dstGas,
-            sender: bytes32(uint256(uint160(msg.sender))),
-            recipient: _recipient,
-            data: _data
-        });
-
-        SendParam memory sendParam = _generateSendParam({
-            _amountLD: removeDust(_oft, _amount),
-            _hopMessage: hopMessage
-        });
-        MessagingFee memory fee = IOFT(_oft).quoteSend(sendParam, false);
-
-        // Use HUB_EID instead of hardcoded FRAXTAL_EID
-        uint256 hopFeeOnHub = (_dstEid == HUB_EID || localEid_ == HUB_EID) ? 0 : quoteHop(_dstEid, _dstGas, _data);
-
-        address userToken = StdPrecompiles.TIP_FEE_MANAGER.userTokens(msg.sender);
-        return _quoteUserTokenAmount(userToken, fee.nativeFee) + _quoteUserTokenAmount(userToken, hopFeeOnHub);
+        return _quoteNativeFee(_oft, _dstEid, _recipient, _amount, _dstGas, _data);
     }
 
-    /// @notice Preview the quote for an explicit user gas token.
-    /// @dev This helper is caller-independent and does not reflect sendOFT() execution binding.
-    function previewQuoteForUserToken(
+    function quoteStatic(
         address _oft,
         uint32 _dstEid,
         bytes32 _recipient,
@@ -105,7 +80,18 @@ contract RemoteHopV2TempoMock is HopV2, IOAppComposer {
         uint128 _dstGas,
         bytes memory _data,
         address _userToken
-    ) public view returns (uint256) {
+    ) external view returns (uint256) {
+        return _quoteUserTokenAmount(_userToken, quote(_oft, _dstEid, _recipient, _amount, _dstGas, _data));
+    }
+
+    function _quoteNativeFee(
+        address _oft,
+        uint32 _dstEid,
+        bytes32 _recipient,
+        uint256 _amount,
+        uint128 _dstGas,
+        bytes memory _data
+    ) internal view returns (uint256) {
         uint32 localEid_ = localEid();
         if (_dstEid == localEid_) return 0;
 
@@ -126,7 +112,7 @@ contract RemoteHopV2TempoMock is HopV2, IOAppComposer {
 
         uint256 hopFeeOnHub = (_dstEid == HUB_EID || localEid_ == HUB_EID) ? 0 : quoteHop(_dstEid, _dstGas, _data);
 
-        return _quoteUserTokenAmount(_userToken, fee.nativeFee) + _quoteUserTokenAmount(_userToken, hopFeeOnHub);
+        return fee.nativeFee + hopFeeOnHub;
     }
 
     /// @notice Send an OFT to a destination with encoded data

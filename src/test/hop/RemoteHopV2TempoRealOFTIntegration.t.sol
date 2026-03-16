@@ -96,13 +96,22 @@ contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
         uint256 sendAmount = 10e6;
 
         vm.startPrank(alice);
-        uint256 fee = remoteHopTempo.quote(
+        uint256 nativeFee = remoteHopTempo.quote(
             address(tempoFrxUsdAdapter),
             FRAXTAL_EID,
             OFTMsgCodec.addressToBytes32(bob),
             sendAmount,
             0,
             ""
+        );
+        uint256 fee = remoteHopTempo.quoteStatic(
+            address(tempoFrxUsdAdapter),
+            FRAXTAL_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            sendAmount,
+            0,
+            "",
+            StdTokens.PATH_USD_ADDRESS
         );
         uint256 aliceFrxUsdBefore = tempoFrxUsdToken.balanceOf(alice);
         uint256 alicePathUsdBefore = StdTokens.PATH_USD.balanceOf(alice);
@@ -120,6 +129,8 @@ contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
             ""
         );
         vm.stopPrank();
+
+        assertEq(fee, nativeFee, "PATH_USD quoteStatic should be 1:1 with native quote");
 
         assertEq(tempoFrxUsdToken.balanceOf(alice), aliceFrxUsdBefore - sendAmount, "Tempo frxUSD amount mismatch");
         assertEq(StdTokens.PATH_USD.balanceOf(alice), alicePathUsdBefore - fee, "PATH_USD fee mismatch");
@@ -141,7 +152,7 @@ contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
         _setUserGasToken(alice, address(tempoFrxUsdToken));
 
         vm.startPrank(alice);
-        uint256 fee = remoteHopTempo.quote(
+        uint256 nativeFee = remoteHopTempo.quote(
             address(tempoFrxUsdAdapter),
             FRAXTAL_EID,
             OFTMsgCodec.addressToBytes32(bob),
@@ -149,6 +160,16 @@ contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
             0,
             ""
         );
+        uint256 fee = remoteHopTempo.quoteStatic(
+            address(tempoFrxUsdAdapter),
+            FRAXTAL_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            sendAmount,
+            0,
+            "",
+            address(tempoFrxUsdToken)
+        );
+        assertGt(nativeFee, 0, "Native fee should be non-zero");
         uint256 aliceFrxUsdBefore = tempoFrxUsdToken.balanceOf(alice);
 
         IERC20(address(tempoFrxUsdToken)).approve(address(remoteHopTempo), type(uint256).max);
@@ -179,13 +200,22 @@ contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
         uint256 sendAmount = 10e6;
 
         vm.startPrank(alice);
-        uint256 fee = remoteHopTempo.quote(
+        uint256 nativeFee = remoteHopTempo.quote(
             address(tempoFrxUsdAdapter),
             CHAIN_A_EID,
             OFTMsgCodec.addressToBytes32(bob),
             sendAmount,
             400_000,
             ""
+        );
+        uint256 fee = remoteHopTempo.quoteStatic(
+            address(tempoFrxUsdAdapter),
+            CHAIN_A_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            sendAmount,
+            400_000,
+            "",
+            StdTokens.PATH_USD_ADDRESS
         );
         uint256 alicePathUsdBefore = StdTokens.PATH_USD.balanceOf(alice);
         uint256 hopWrappedBefore = IERC20(address(remoteHopTempo.nativeToken())).balanceOf(address(remoteHopTempo));
@@ -202,6 +232,8 @@ contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
             ""
         );
         vm.stopPrank();
+
+        assertEq(fee, nativeFee, "PATH_USD quoteStatic should be 1:1 with native quote");
 
         uint256 hopWrappedAfter = IERC20(address(remoteHopTempo.nativeToken())).balanceOf(address(remoteHopTempo));
         assertEq(StdTokens.PATH_USD.balanceOf(alice), alicePathUsdBefore - fee, "Multi-hop fee mismatch");
@@ -240,13 +272,22 @@ contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
         uint256 sendAmount = 10e18;
 
         vm.startPrank(alice);
-        uint256 fee = remoteHopTempo.quote(
+        uint256 nativeFee = remoteHopTempo.quote(
             address(tempoFraxOft),
             FRAXTAL_EID,
             OFTMsgCodec.addressToBytes32(bob),
             sendAmount,
             0,
             ""
+        );
+        uint256 fee = remoteHopTempo.quoteStatic(
+            address(tempoFraxOft),
+            FRAXTAL_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            sendAmount,
+            0,
+            "",
+            StdTokens.PATH_USD_ADDRESS
         );
         uint256 aliceFraxBefore = tempoFraxOft.balanceOf(alice);
         uint256 alicePathUsdBefore = StdTokens.PATH_USD.balanceOf(alice);
@@ -264,6 +305,8 @@ contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
             ""
         );
         vm.stopPrank();
+
+        assertEq(fee, nativeFee, "PATH_USD quoteStatic should be 1:1 with native quote");
 
         assertEq(tempoFraxOft.balanceOf(alice), aliceFraxBefore - sendAmount, "Tempo FRAX amount mismatch");
         assertEq(StdTokens.PATH_USD.balanceOf(alice), alicePathUsdBefore - fee, "PATH_USD fee mismatch");
@@ -294,10 +337,10 @@ contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
         );
         vm.stopPrank();
 
-        assertEq(staticFee, quoteFee, "quoteStatic should match quote for caller's resolved gas token");
+        assertEq(staticFee, quoteFee, "quoteStatic should match quote for PATH_USD");
     }
 
-    function test_Tempo_PreviewQuoteForUserToken_UsesExplicitToken() public {
+    function test_Tempo_QuoteStatic_UsesExplicitToken() public {
         uint256 sendAmount = 10e6;
         bytes32 recipient = OFTMsgCodec.addressToBytes32(bob);
 
@@ -311,6 +354,14 @@ contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
         _setUserGasToken(alice, address(altGasToken));
 
         vm.startPrank(alice);
+        uint256 nativeQuote = remoteHopTempo.quote(
+            address(tempoFrxUsdAdapter),
+            FRAXTAL_EID,
+            recipient,
+            sendAmount,
+            0,
+            ""
+        );
         uint256 staticAltFee = remoteHopTempo.quoteStatic(
             address(tempoFrxUsdAdapter),
             FRAXTAL_EID,
@@ -320,16 +371,16 @@ contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
             "",
             address(altGasToken)
         );
-        uint256 previewAltFee = remoteHopTempo.previewQuoteForUserToken(
+        uint256 quotedAltFee = remoteHopTempo.quoteUserTokenFee(address(altGasToken), nativeQuote);
+        uint256 pathUsdNativeQuote = remoteHopTempo.quote(
             address(tempoFrxUsdAdapter),
             FRAXTAL_EID,
             recipient,
             sendAmount,
             0,
-            "",
-            address(altGasToken)
+            ""
         );
-        uint256 previewPathUsdFee = remoteHopTempo.previewQuoteForUserToken(
+        uint256 pathUsdFee = remoteHopTempo.quoteStatic(
             address(tempoFrxUsdAdapter),
             FRAXTAL_EID,
             recipient,
@@ -340,8 +391,9 @@ contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
         );
         vm.stopPrank();
 
-        assertEq(staticAltFee, previewAltFee, "explicit alt token preview should match quoteStatic");
-        assertGe(previewAltFee, previewPathUsdFee, "non-whitelisted preview should be >= PATH_USD preview");
+        assertEq(staticAltFee, quotedAltFee, "quoteStatic should mirror quoteUserTokenFee(nativeQuote)");
+        assertEq(pathUsdFee, pathUsdNativeQuote, "PATH_USD quoteStatic should be 1:1 with native quote");
+        assertGe(staticAltFee, pathUsdFee, "non-whitelisted fee should be >= PATH_USD fee");
 
         _setUserGasToken(alice, StdTokens.PATH_USD_ADDRESS);
     }

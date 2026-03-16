@@ -434,8 +434,7 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
 
         vm.startPrank(alice);
 
-        // Get quote for the hop (in PATH_USD terms)
-        uint256 fee = remoteHopTempo.quote(
+        uint256 nativeFee = remoteHopTempo.quote(
             address(tempoAdapter),
             CHAIN_A_EID,
             OFTMsgCodec.addressToBytes32(bob),
@@ -443,6 +442,16 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
             400_000,
             ""
         );
+        uint256 fee = remoteHopTempo.quoteStatic(
+            address(tempoAdapter),
+            CHAIN_A_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            sendAmountTempo,
+            400_000,
+            "",
+            StdTokens.PATH_USD_ADDRESS
+        );
+        assertEq(fee, nativeFee, "PATH_USD quoteStatic should be 1:1 with native quote");
 
         // Approve underlying TIP20 token to adapter (adapter pulls and burns)
         IERC20(address(tempoToken)).approve(address(tempoAdapter), sendAmountTempo);
@@ -580,7 +589,7 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
 
         vm.startPrank(alice);
 
-        uint256 fee = remoteHopTempo.quote(
+        uint256 nativeFee = remoteHopTempo.quote(
             address(tempoAdapter),
             FRAXTAL_EID,
             OFTMsgCodec.addressToBytes32(bob),
@@ -588,6 +597,16 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
             0,
             ""
         );
+        uint256 fee = remoteHopTempo.quoteStatic(
+            address(tempoAdapter),
+            FRAXTAL_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            sendAmountTempo,
+            0,
+            "",
+            StdTokens.PATH_USD_ADDRESS
+        );
+        assertEq(fee, nativeFee, "PATH_USD quoteStatic should be 1:1 with native quote");
 
         // Approve underlying TIP20 token
         IERC20(address(tempoToken)).approve(address(tempoAdapter), sendAmountTempo);
@@ -757,7 +776,7 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
 
         vm.startPrank(alice);
 
-        uint256 fee = remoteHopTempo.quote(
+        uint256 nativeFee = remoteHopTempo.quote(
             address(tempoAdapter),
             FRAXTAL_EID,
             OFTMsgCodec.addressToBytes32(bob),
@@ -765,7 +784,17 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
             0,
             ""
         );
+        uint256 fee = remoteHopTempo.quoteStatic(
+            address(tempoAdapter),
+            FRAXTAL_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            sendAmountTempo,
+            0,
+            "",
+            StdTokens.PATH_USD_ADDRESS
+        );
         assertGt(fee, 0, "Fee should be non-zero");
+        assertEq(fee, nativeFee, "PATH_USD quoteStatic should be 1:1 with native quote");
 
         // Record balances before
         uint256 alicePathUsdBefore = StdTokens.PATH_USD.balanceOf(alice);
@@ -811,7 +840,7 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
 
         vm.startPrank(alice);
 
-        uint256 fee = remoteHopTempo.quote(
+        uint256 nativeFee = remoteHopTempo.quote(
             address(tempoAdapter),
             CHAIN_A_EID,
             OFTMsgCodec.addressToBytes32(bob),
@@ -819,7 +848,17 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
             400_000,
             ""
         );
+        uint256 fee = remoteHopTempo.quoteStatic(
+            address(tempoAdapter),
+            CHAIN_A_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            sendAmountTempo,
+            400_000,
+            "",
+            StdTokens.PATH_USD_ADDRESS
+        );
         assertGt(fee, 0, "Fee should be non-zero for multi-hop");
+        assertEq(fee, nativeFee, "PATH_USD quoteStatic should be 1:1 with native quote");
 
         // Record balances before
         uint256 alicePathUsdBefore = StdTokens.PATH_USD.balanceOf(alice);
@@ -890,7 +929,7 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
         assertEq(fee, feeBob, "Same gas token should yield same quote");
     }
 
-    /// @notice Quote returns DEX-converted amount for non-whitelisted gas token
+    /// @notice Quote stays in native-LZ units regardless of configured gas token
     function test_Tempo_Quote_NonWhitelistedGasToken() public {
         // Create a non-whitelisted TIP20 with DEX liquidity
         ITIP20 altGasToken = _createTIP20WithDexPair(
@@ -904,7 +943,7 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
         // Set alice's gas token to the non-whitelisted token
         _setUserGasToken(alice, address(altGasToken));
 
-        // Get quote with non-whitelisted gas token
+        // Get raw native-LZ quote with non-whitelisted gas token configured
         vm.prank(alice);
         uint256 feeNonWhitelisted = remoteHopTempo.quote(
             address(tempoAdapter),
@@ -928,22 +967,18 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
         );
 
         assertGt(feeNonWhitelisted, 0, "Non-whitelisted fee should be non-zero");
-        assertGe(
-            feeNonWhitelisted,
-            feeWhitelisted,
-            "Non-whitelisted fee should be >= whitelisted fee (includes DEX conversion)"
-        );
+        assertEq(feeNonWhitelisted, feeWhitelisted, "Raw native-LZ quote should not depend on gas token");
 
         // Restore alice's gas token for other tests
         _setUserGasToken(alice, StdTokens.PATH_USD_ADDRESS);
     }
 
-    /// @notice Explicit-token preview quotes depend on the requested token, not the caller's configured token
-    function test_Tempo_PreviewQuoteForUserToken_IsCallerIndependent() public {
+    /// @notice Explicit-token quoteStatic depends on the requested token, not the caller's configured token
+    function test_Tempo_QuoteStatic_IsCallerIndependent() public {
         ITIP20 altGasToken = _createTIP20WithDexPair(
             "PreviewGas",
             "PGAS",
-            keccak256("test_Tempo_PreviewQuoteForUserToken_IsCallerIndependent")
+            keccak256("test_Tempo_QuoteStatic_IsCallerIndependent")
         );
         _addDexLiquidity(address(altGasToken), 1_000_000e6);
 
@@ -951,7 +986,7 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
         _setUserGasToken(bob, StdTokens.PATH_USD_ADDRESS);
 
         vm.prank(alice);
-        uint256 executionQuoteAlice = remoteHopTempo.quote(
+        uint256 nativeQuoteAlice = remoteHopTempo.quote(
             address(tempoAdapter),
             CHAIN_A_EID,
             OFTMsgCodec.addressToBytes32(bob),
@@ -961,7 +996,7 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
         );
 
         vm.prank(alice);
-        uint256 previewPathUsdAlice = remoteHopTempo.previewQuoteForUserToken(
+        uint256 pathUsdQuoteAlice = remoteHopTempo.quoteStatic(
             address(tempoAdapter),
             CHAIN_A_EID,
             OFTMsgCodec.addressToBytes32(bob),
@@ -972,7 +1007,17 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
         );
 
         vm.prank(bob);
-        uint256 previewPathUsdBob = remoteHopTempo.previewQuoteForUserToken(
+        uint256 nativeQuoteBob = remoteHopTempo.quote(
+            address(tempoAdapter),
+            CHAIN_A_EID,
+            OFTMsgCodec.addressToBytes32(alice),
+            10e6,
+            400_000,
+            ""
+        );
+
+        vm.prank(bob);
+        uint256 pathUsdQuoteBob = remoteHopTempo.quoteStatic(
             address(tempoAdapter),
             CHAIN_A_EID,
             OFTMsgCodec.addressToBytes32(alice),
@@ -982,13 +1027,10 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
             StdTokens.PATH_USD_ADDRESS
         );
 
-        assertGt(previewPathUsdAlice, 0, "Preview quote should be non-zero");
-        assertEq(previewPathUsdAlice, previewPathUsdBob, "Explicit-token preview should not depend on caller token");
-        assertGe(
-            executionQuoteAlice,
-            previewPathUsdAlice,
-            "Caller-bound execution quote should be >= PATH_USD preview"
-        );
+        assertGt(pathUsdQuoteAlice, 0, "quoteStatic should be non-zero");
+        assertEq(pathUsdQuoteAlice, nativeQuoteAlice, "PATH_USD quoteStatic should be 1:1 with native quote");
+        assertEq(pathUsdQuoteBob, nativeQuoteBob, "PATH_USD quoteStatic should be 1:1 with native quote");
+        assertEq(pathUsdQuoteAlice, pathUsdQuoteBob, "quoteStatic should not depend on caller token");
 
         _setUserGasToken(alice, StdTokens.PATH_USD_ADDRESS);
     }
@@ -1018,8 +1060,7 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
 
         vm.startPrank(alice);
 
-        // Quote fee in user's gas token units
-        uint256 fee = remoteHopTempo.quote(
+        uint256 nativeFee = remoteHopTempo.quote(
             address(tempoAdapter),
             FRAXTAL_EID,
             OFTMsgCodec.addressToBytes32(bob),
@@ -1027,6 +1068,16 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
             0,
             ""
         );
+        uint256 fee = remoteHopTempo.quoteStatic(
+            address(tempoAdapter),
+            FRAXTAL_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            sendAmountTempo,
+            0,
+            "",
+            address(altGasToken)
+        );
+        assertGt(nativeFee, 0, "Native fee should be non-zero");
 
         // Record balances
         uint256 aliceAltGasBefore = altGasToken.balanceOf(alice);
@@ -1082,7 +1133,7 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
 
         vm.startPrank(alice);
 
-        uint256 fee = remoteHopTempo.quote(
+        uint256 nativeFee = remoteHopTempo.quote(
             address(tempoAdapter),
             FRAXTAL_EID,
             OFTMsgCodec.addressToBytes32(bob),
@@ -1090,6 +1141,16 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
             0,
             ""
         );
+        uint256 fee = remoteHopTempo.quoteStatic(
+            address(tempoAdapter),
+            FRAXTAL_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            sendAmountTempo,
+            0,
+            "",
+            address(tempoToken)
+        );
+        assertGt(nativeFee, 0, "Native fee should be non-zero");
         assertGt(fee, 0, "Fee should be non-zero");
 
         uint256 aliceTempoBefore = tempoToken.balanceOf(alice);
@@ -1140,7 +1201,7 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
 
         vm.startPrank(charlie);
 
-        uint256 fee = remoteHopTempo.quote(
+        uint256 nativeFee = remoteHopTempo.quote(
             address(tempoAdapter),
             FRAXTAL_EID,
             OFTMsgCodec.addressToBytes32(bob),
@@ -1148,7 +1209,17 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
             0,
             ""
         );
+        uint256 fee = remoteHopTempo.quoteStatic(
+            address(tempoAdapter),
+            FRAXTAL_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            sendAmountTempo,
+            0,
+            "",
+            StdTokens.PATH_USD_ADDRESS
+        );
         assertGt(fee, 0, "Fee should be non-zero");
+        assertEq(fee, nativeFee, "PATH_USD quoteStatic should be 1:1 with native quote");
 
         uint256 charliePathUsdBefore = StdTokens.PATH_USD.balanceOf(charlie);
 
@@ -1195,7 +1266,7 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
         IERC20(address(tempoToken)).approve(address(tempoAdapter), type(uint256).max);
 
         for (uint256 i = 0; i < 2; i++) {
-            uint256 fee = remoteHopTempo.quote(
+            uint256 nativeFee = remoteHopTempo.quote(
                 address(tempoAdapter),
                 FRAXTAL_EID,
                 OFTMsgCodec.addressToBytes32(bob),
@@ -1203,6 +1274,16 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
                 0,
                 ""
             );
+            uint256 fee = remoteHopTempo.quoteStatic(
+                address(tempoAdapter),
+                FRAXTAL_EID,
+                OFTMsgCodec.addressToBytes32(bob),
+                sendAmountTempo,
+                0,
+                "",
+                address(altGasToken)
+            );
+            assertGt(nativeFee, 0, "Native fee should be non-zero");
             uint256 aliceAltGasBefore = altGasToken.balanceOf(alice);
 
             remoteHopTempo.sendOFT(

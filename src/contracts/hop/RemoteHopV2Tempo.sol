@@ -2,13 +2,11 @@
 pragma solidity ^0.8.0;
 
 import { SendParam, MessagingFee, IOFT } from "@fraxfinance/layerzero-v2-upgradeable/oapp/contracts/oft/interfaces/IOFT.sol";
-import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import { ITIP20 } from "@tempo/interfaces/ITIP20.sol";
 import { RemoteHopV2 } from "src/contracts/hop/RemoteHopV2.sol";
 import { HopMessage } from "src/contracts/hop/HopV2.sol";
 import { TempoGasTokenBase } from "src/contracts/base/TempoGasTokenBase.sol";
 import { StdPrecompiles } from "tempo-std/StdPrecompiles.sol";
-import { StdTokens } from "tempo-std/StdTokens.sol";
 
 // ====================================================================
 // |     ______                   _______                             |
@@ -75,14 +73,8 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoGasTokenBase {
         emit SendOFT(_oft, msg.sender, _dstEid, _recipient, _amountLD);
     }
 
-    /// @notice Override quote to return fees in the caller's resolved user-token units.
-    /// @dev On Tempo, the user's gas token may require a DEX swap to obtain a whitelisted
-    ///      stablecoin. This override translates the endpoint-native fee so that callers get
-    ///      a single-step quote() → approve() → sendOFT() UX matching ETH chains.
-    /// @dev This overload quotes using the caller's configured gas token, matching sendOFT()
-    ///      behavior. Treat this as a compatibility view helper.
-    ///      For deterministic UI pricing on Tempo, prefer `quoteStatic()` or
-    ///      `previewQuoteForUserToken()` via eth_call/simulation.
+    /// @notice Override quote to return fees in native-LZ units.
+    /// @dev This matches `IOFT.quoteSend()` semantics on Tempo OFTs.
     function quote(
         address _oft,
         uint32 _dstEid,
@@ -91,22 +83,12 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoGasTokenBase {
         uint128 _dstGas,
         bytes memory _data
     ) public view override returns (uint256) {
-        address userToken = _resolveUserToken();
-        return
-            _quoteWithUserToken({
-                _oft: _oft,
-                _dstEid: _dstEid,
-                _recipient: _recipient,
-                _amount: _amount,
-                _dstGas: _dstGas,
-                _data: _data,
-                _userToken: userToken
-            });
+        return _quoteNativeFee(_oft, _dstEid, _recipient, _amount, _dstGas, _data);
     }
 
-    /// @notice Simulated quote using an explicit user gas token.
-    /// @dev Intended for off-chain simulation (eth_call). This sets hop contract token context
-    ///      before calling IOFT.quoteSend() so fee routing matches execution.
+    /// @notice Simulated quote converted into an explicit user gas token.
+    /// @dev Analogous to `quoteUserTokenFee()`: get the raw native-LZ quote first,
+    ///      then convert it to `_userToken` units.
     function quoteStatic(
         address _oft,
         uint32 _dstEid,
@@ -115,57 +97,17 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoGasTokenBase {
         uint128 _dstGas,
         bytes memory _data,
         address _userToken
-    ) external returns (uint256) {
-        StdPrecompiles.TIP_FEE_MANAGER.setUserToken(_userToken);
-
-        return
-            _quoteWithUserToken({
-                _oft: _oft,
-                _dstEid: _dstEid,
-                _recipient: _recipient,
-                _amount: _amount,
-                _dstGas: _dstGas,
-                _data: _data,
-                _userToken: _userToken
-            });
+    ) external view returns (uint256) {
+        return _quoteUserTokenFee(_userToken, quote(_oft, _dstEid, _recipient, _amount, _dstGas, _data));
     }
 
-    /// @notice Preview the quote for an explicit user gas token.
-    /// @dev Intended for off-chain simulation (eth_call) under a specific token assumption.
-    ///      This sets hop contract token context before IOFT.quoteSend() for deterministic pricing.
-    ///      Use this when the UI needs arbitrary-token previews without requiring a prior on-chain
-    ///      user token update.
-    function previewQuoteForUserToken(
+    function _quoteNativeFee(
         address _oft,
         uint32 _dstEid,
         bytes32 _recipient,
         uint256 _amount,
         uint128 _dstGas,
-        bytes memory _data,
-        address _userToken
-    ) public returns (uint256) {
-        StdPrecompiles.TIP_FEE_MANAGER.setUserToken(_userToken);
-
-        return
-            _quoteWithUserToken({
-                _oft: _oft,
-                _dstEid: _dstEid,
-                _recipient: _recipient,
-                _amount: _amount,
-                _dstGas: _dstGas,
-                _data: _data,
-                _userToken: _userToken
-            });
-    }
-
-    function _quoteWithUserToken(
-        address _oft,
-        uint32 _dstEid,
-        bytes32 _recipient,
-        uint256 _amount,
-        uint128 _dstGas,
-        bytes memory _data,
-        address _userToken
+        bytes memory _data
     ) internal view returns (uint256) {
         uint32 localEid_ = localEid();
         if (_dstEid == localEid_) return 0;
@@ -188,7 +130,7 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoGasTokenBase {
             ? 0
             : quoteHop(_dstEid, _dstGas, _data);
 
-        return _quoteUserTokenFee(_userToken, fee.nativeFee) + _quoteUserTokenFee(_userToken, hopFeeOnFraxtal);
+        return fee.nativeFee + hopFeeOnFraxtal;
     }
 
     /// @dev Override to let the OFT pay its own endpoint fee in ERC20 via EndpointV2Alt.

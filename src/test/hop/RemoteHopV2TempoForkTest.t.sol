@@ -65,22 +65,13 @@ contract RemoteHopV2TempoForkTest is Test {
         _assertDirectQuoteMatchesOftQuote(FPI_OFT);
     }
 
-    function testFork_RemoteHopV2Tempo_DefaultFallbackMatchesExplicitPathUsdPreview() public {
-        _assertDefaultFallbackMatchesPreview(FRXUSD_OFT);
-        _assertDefaultFallbackMatchesPreview(SFRXUSD_OFT);
-        _assertDefaultFallbackMatchesPreview(FRXETH_OFT);
-        _assertDefaultFallbackMatchesPreview(SFRXETH_OFT);
-        _assertDefaultFallbackMatchesPreview(WFRAX_OFT);
-        _assertDefaultFallbackMatchesPreview(FPI_OFT);
-    }
-
-    function testFork_RemoteHopV2Tempo_QuoteStaticMatchesPathUsdPreview() public {
-        _assertQuoteStaticMatchesPreviewPathUsd(FRXUSD_OFT);
-        _assertQuoteStaticMatchesPreviewPathUsd(SFRXUSD_OFT);
-        _assertQuoteStaticMatchesPreviewPathUsd(FRXETH_OFT);
-        _assertQuoteStaticMatchesPreviewPathUsd(SFRXETH_OFT);
-        _assertQuoteStaticMatchesPreviewPathUsd(WFRAX_OFT);
-        _assertQuoteStaticMatchesPreviewPathUsd(FPI_OFT);
+    function testFork_RemoteHopV2Tempo_QuoteStaticMatchesPathUsdQuote() public {
+        _assertQuoteStaticMatchesPathUsdQuote(FRXUSD_OFT);
+        _assertQuoteStaticMatchesPathUsdQuote(SFRXUSD_OFT);
+        _assertQuoteStaticMatchesPathUsdQuote(FRXETH_OFT);
+        _assertQuoteStaticMatchesPathUsdQuote(SFRXETH_OFT);
+        _assertQuoteStaticMatchesPathUsdQuote(WFRAX_OFT);
+        _assertQuoteStaticMatchesPathUsdQuote(FPI_OFT);
     }
 
     function testFork_RemoteHopV2Tempo_SendOFTRejectsMsgValue() public {
@@ -126,32 +117,13 @@ contract RemoteHopV2TempoForkTest is Test {
         assertEq(remoteHopQuote, oftQuote, "RemoteHopV2Tempo quote mismatch");
     }
 
-    function _assertDefaultFallbackMatchesPreview(address oft) internal {
-        address user = makeAddr(string.concat("fallback-user-", vm.toString(oft)));
-        bytes32 recipient = _toBytes32(makeAddr(string.concat("fallback-recipient-", vm.toString(oft))));
-        uint256 amount = _sampleAmount(oft);
-
-        vm.prank(user);
-        uint256 executionQuote = remoteHopTempo.quote(oft, FRAXTAL_EID, recipient, amount, 0, "");
-
-        vm.prank(user);
-        uint256 previewQuote = remoteHopTempo.previewQuoteForUserToken(
-            oft,
-            FRAXTAL_EID,
-            recipient,
-            amount,
-            0,
-            "",
-            StdTokens.PATH_USD_ADDRESS
-        );
-
-        assertEq(executionQuote, previewQuote, "default PATH_USD fallback mismatch");
-    }
-
-    function _assertQuoteStaticMatchesPreviewPathUsd(address oft) internal {
+    function _assertQuoteStaticMatchesPathUsdQuote(address oft) internal {
         address user = makeAddr(string.concat("quote-static-user-", vm.toString(oft)));
         bytes32 recipient = _toBytes32(makeAddr(string.concat("quote-static-recipient-", vm.toString(oft))));
         uint256 amount = _sampleAmount(oft);
+
+        vm.prank(user);
+        uint256 nativeQuote = remoteHopTempo.quote(oft, FRAXTAL_EID, recipient, amount, 0, "");
 
         vm.prank(user);
         uint256 staticQuote = remoteHopTempo.quoteStatic(
@@ -164,18 +136,7 @@ contract RemoteHopV2TempoForkTest is Test {
             StdTokens.PATH_USD_ADDRESS
         );
 
-        vm.prank(user);
-        uint256 previewQuote = remoteHopTempo.previewQuoteForUserToken(
-            oft,
-            FRAXTAL_EID,
-            recipient,
-            amount,
-            0,
-            "",
-            StdTokens.PATH_USD_ADDRESS
-        );
-
-        assertEq(staticQuote, previewQuote, "quoteStatic should match PATH_USD preview under default fallback");
+        assertEq(staticQuote, nativeQuote, "PATH_USD conversion should be 1:1 with native quote");
     }
 
     function _sampleAmount(address oft) internal view returns (uint256) {
