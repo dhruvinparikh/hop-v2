@@ -7,7 +7,7 @@ import { RemoteHopV2 } from "src/contracts/hop/RemoteHopV2.sol";
 import { RemoteHopV2Tempo } from "src/contracts/hop/RemoteHopV2Tempo.sol";
 import { FraxUpgradeableProxy, ITransparentUpgradeableProxy } from "frax-std/FraxUpgradeableProxy.sol";
 
-// forge script src/script/hop/DeployRemoteHopV2Tempo.s.sol --rpc-url https://rpc.tempo.com --broadcast --verify --gcp --sender 0x54f9b12743a7deec0ea48721683cbebedc6e17bc
+// forge script src/script/hop/DeployRemoteHopV2Tempo.s.sol --rpc-url https://rpc.tempo.xyz --gcp --sender 0x54f9b12743a7deec0ea48721683cbebedc6e17bc --broadcast --verify
 contract DeployRemoteHopV2Tempo is DeployRemoteHopV2 {
     address public constant TEMPO_ENDPOINT = 0x20Bb7C2E2f4e5ca2B4c57060d1aE2615245dCc9C;
 
@@ -114,20 +114,12 @@ contract DeployRemoteHopV2Tempo is DeployRemoteHopV2 {
         */
 
         // @dev: for cancun
-        address implementation = address(
-            new RemoteHopV2{ salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956c9354ec210d62dd5b592000c0) }()
-        );
-        require(implementation == 0x0000000087ED0dD8b999aE6C7c30f95e9707a3C6, "Implementation address mismatch");
+        address proxy = 0x0000006D38568b00B457580b734e0076C62de659;
 
-        FraxUpgradeableProxy proxy = new FraxUpgradeableProxy{
-            salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956cf4079e3d6eda7a014e9e0040)
-        }(implementation, msg.sender, "");
-        require(address(proxy) == 0x0000006D38568b00B457580b734e0076C62de659, "Proxy address mismatch");
+        address implementationTempo = address(new RemoteHopV2Tempo(TEMPO_ENDPOINT));
 
-        address implementationTempo = new RemoteHopV2Tempo(TEMPO_ENDPOINT);
-
-        ITransparentUpgradeableProxy(address(proxy)).upgradeToAndCall(implementationTempo, initializeArgs);
-        ITransparentUpgradeableProxy(address(proxy)).changeAdmin(_proxyAdmin);
+        ITransparentUpgradeableProxy(proxy).upgradeToAndCall(implementationTempo, initializeArgs);
+        ITransparentUpgradeableProxy(proxy).changeAdmin(_proxyAdmin);
 
         // set solana enforced options
         RemoteHopV2(payable(address(proxy))).setExecutorOptions(
