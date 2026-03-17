@@ -50,7 +50,7 @@ abstract contract DeployRemoteHopV2 is Script {
     address fpiOft;
     address[] approvedOfts;
 
-    function run() public {
+    function run() public virtual {
         _validateAddrs();
 
         vm.startBroadcast();
