@@ -109,7 +109,8 @@ contract RemoteVaultHop is AccessControlEnumerableUpgradeable, IHopComposer {
         address _oft,
         address _hop,
         uint32 _eid,
-        address _proxyAdmin
+        address _proxyAdmin,
+        address _implementation
     ) external initializer {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
 
@@ -122,13 +123,18 @@ contract RemoteVaultHop is AccessControlEnumerableUpgradeable, IHopComposer {
 
         $.proxyAdmin = _proxyAdmin;
 
-        $.implementation = address(new RemoteVaultDeposit());
+        $.implementation = _implementation;
     }
 
     /// @notice Receive ETH payments
     receive() external payable {}
 
-    function deposit(uint256 _amount, uint32 _remoteEid, address _remoteVault, address _to) external payable {
+    function deposit(
+        uint256 _amount,
+        uint32 _remoteEid,
+        address _remoteVault,
+        address _to
+    ) external payable returns (uint256) {
         RemoteVaultHopStorage storage $ = _getRemoteVaultHopStorage();
 
         if ($.remoteVaultHops[_remoteEid] == address(0)) revert InvalidChain();
@@ -166,9 +172,16 @@ contract RemoteVaultHop is AccessControlEnumerableUpgradeable, IHopComposer {
             if (!success) revert RefundFailed();
         }
         emit Deposit(_to, _remoteEid, _remoteVault, _amount);
+
+        return fee;
     }
 
-    function redeem(uint256 _amount, uint32 _remoteEid, address _remoteVault, address _to) external payable {
+    function redeem(
+        uint256 _amount,
+        uint32 _remoteEid,
+        address _remoteVault,
+        address _to
+    ) external payable returns (uint256) {
         RemoteVaultHopStorage storage $ = _getRemoteVaultHopStorage();
 
         if ($.remoteVaultHops[_remoteEid] == address(0)) revert InvalidChain();
@@ -202,6 +215,7 @@ contract RemoteVaultHop is AccessControlEnumerableUpgradeable, IHopComposer {
             if (!success) revert RefundFailed();
         }
         emit Redeem(_to, _remoteEid, _remoteVault, _amount);
+        return fee;
     }
 
     /// @notice Quotes the cost to hop to a remote vault and back.  This can be either through:
@@ -391,7 +405,10 @@ contract RemoteVaultHop is AccessControlEnumerableUpgradeable, IHopComposer {
         FraxUpgradeableProxy proxy = new FraxUpgradeableProxy(
             address($.implementation),
             $.proxyAdmin,
-            abi.encodeCall(RemoteVaultDeposit.initialize, (_eid, _vault, address($.TOKEN), name, symbol, decimals))
+            abi.encodeCall(
+                RemoteVaultDeposit.initialize,
+                (_eid, _vault, address($.TOKEN), $.DECIMAL_CONVERSION_RATE, name, symbol, decimals)
+            )
         );
         $.depositToken[_eid][_vault] = RemoteVaultDeposit(payable(address(proxy)));
         emit RemoteVaultAdded(_eid, _vault, name, symbol);

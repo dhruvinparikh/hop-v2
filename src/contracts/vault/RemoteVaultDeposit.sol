@@ -31,6 +31,8 @@ contract RemoteVaultDeposit is ERC20Upgradeable, OwnableUpgradeable {
         uint32 VAULT_CHAIN_ID;
         /// @notice The address of the vault on the remote chain
         address VAULT_ADDRESS;
+        /// @notice The decimal conversion rate as provided by the frxUSD OFT
+        uint256 DECIMAL_CONVERSION_RATE;
         /// @notice The asset deposited into the remote vault
         address ASSET;
         /// @notice Price per share of the remote vault
@@ -56,6 +58,9 @@ contract RemoteVaultDeposit is ERC20Upgradeable, OwnableUpgradeable {
     /// @notice Only the RemoteVault contract can mint/burn tokens
     error OnlyRemoteVault();
 
+    /// @notice Refund failed
+    error RefundFailed();
+
     /// @notice Emitted when tokens are minted
     event Mint(address indexed to, uint256 amount);
 
@@ -77,6 +82,7 @@ contract RemoteVaultDeposit is ERC20Upgradeable, OwnableUpgradeable {
         uint32 _vaultChainId,
         address _vaultAddress,
         address _asset,
+        uint256 _decimalConversionRate,
         string memory _name,
         string memory _symbol,
         uint8 _decimals
@@ -89,6 +95,7 @@ contract RemoteVaultDeposit is ERC20Upgradeable, OwnableUpgradeable {
         $.VAULT_CHAIN_ID = _vaultChainId;
         $.VAULT_ADDRESS = _vaultAddress;
         $.ASSET = _asset;
+        $.DECIMAL_CONVERSION_RATE = _decimalConversionRate;
         $.DECIMALS = _decimals;
     }
 
@@ -148,16 +155,17 @@ contract RemoteVaultDeposit is ERC20Upgradeable, OwnableUpgradeable {
     function deposit(uint256 _amount, address _to) public payable {
         RemoteVaultDepositStorage storage $ = _getRemoteVaultDepositStorage();
 
+        _amount = removeDust(_amount);
         SafeERC20.safeTransferFrom(IERC20($.ASSET), msg.sender, address($.REMOTE_VAULT_HOP), _amount);
-        RemoteVaultHop(payable($.REMOTE_VAULT_HOP)).deposit{ value: msg.value }(
+        uint256 fee = RemoteVaultHop(payable($.REMOTE_VAULT_HOP)).deposit{ value: msg.value }(
             _amount,
             $.VAULT_CHAIN_ID,
             $.VAULT_ADDRESS,
             _to
         );
-        if (address(this).balance > 0) {
-            (bool success, ) = msg.sender.call{ value: address(this).balance }("");
-            require(success, "Refund failed");
+        if (msg.value > fee) {
+            (bool success, ) = msg.sender.call{ value: msg.value - fee }("");
+            if (!success) revert RefundFailed();
         }
     }
 
@@ -171,20 +179,25 @@ contract RemoteVaultDeposit is ERC20Upgradeable, OwnableUpgradeable {
 
         RemoteVaultDepositStorage storage $ = _getRemoteVaultDepositStorage();
 
-        RemoteVaultHop(payable($.REMOTE_VAULT_HOP)).redeem{ value: msg.value }(
+        uint256 fee = RemoteVaultHop(payable($.REMOTE_VAULT_HOP)).redeem{ value: msg.value }(
             _amount,
             $.VAULT_CHAIN_ID,
             $.VAULT_ADDRESS,
             _to
         );
-        if (address(this).balance > 0) {
-            (bool success, ) = msg.sender.call{ value: address(this).balance }("");
-            require(success, "Refund failed");
+        if (msg.value > fee) {
+            (bool success, ) = msg.sender.call{ value: msg.value - fee }("");
+            if (!success) revert RefundFailed();
         }
     }
 
     function quote(uint256 _amount) public view returns (uint256) {
         RemoteVaultDepositStorage storage $ = _getRemoteVaultDepositStorage();
         return RemoteVaultHop(payable($.REMOTE_VAULT_HOP)).quote(_amount, $.VAULT_CHAIN_ID, $.VAULT_ADDRESS);
+    }
+
+    function removeDust(uint256 _amountLD) internal view returns (uint256) {
+        RemoteVaultDepositStorage storage $ = _getRemoteVaultDepositStorage();
+        return (_amountLD / $.DECIMAL_CONVERSION_RATE) * $.DECIMAL_CONVERSION_RATE;
     }
 }

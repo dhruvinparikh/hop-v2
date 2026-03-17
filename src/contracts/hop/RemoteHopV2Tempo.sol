@@ -156,13 +156,30 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoGasTokenBase {
             ? 0
             : quoteHop(_hopMessage.dstEid, _hopMessage.dstGas, _hopMessage.data);
 
+        _collectAndApproveOftFee(_oft, userToken, _amountLD, fee.nativeFee);
+
+        // Collect hop-fee revenue separately; it remains on this contract as wrapped nativeToken.
+        if (hopFeeOnFraxtal > 0) {
+            _payNativeAltToken(hopFeeOnFraxtal, address(this));
+        }
+
+        // Send the OFT to Fraxtal hub
+        IOFT(_oft).send{ value: 0 }(sendParam, fee, address(this));
+
+        // Return 0 — native msg.value fee handling is bypassed on Tempo.
+        return 0;
+    }
+
+    /// @dev Funds the OFT's own `_payNative()` path from this hop contract so execution matches
+    ///      the real OFT flow, then sets the required approvals for fee payment and token debit.
+    function _collectAndApproveOftFee(address _oft, address userToken, uint256 _amountLD, uint256 _nativeFee) internal {
         address oftToken = IOFT(_oft).token();
-        uint256 oftFeeInUserToken = _quoteUserTokenFee(userToken, fee.nativeFee);
+        uint256 oftFeeInUserToken = _quoteUserTokenFee(userToken, _nativeFee);
         uint256 oftTokenAllowance = _amountLD;
 
-        // Fund the OFT's own _payNative() path from this hop contract so execution matches the real OFT flow.
         if (oftFeeInUserToken > 0) {
             ITIP20(userToken).transferFrom(msg.sender, address(this), oftFeeInUserToken);
+
             if (userToken == oftToken) {
                 oftTokenAllowance += oftFeeInUserToken;
             } else {
@@ -170,16 +187,6 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoGasTokenBase {
             }
         }
 
-        // Collect hop-fee revenue separately; it remains on this contract as wrapped nativeToken.
-        if (hopFeeOnFraxtal > 0) {
-            _payNativeAltToken(hopFeeOnFraxtal, address(this));
-        }
-
-        // Approve and send the OFT to Fraxtal hub
         if (oftTokenAllowance > 0) ITIP20(oftToken).approve(_oft, oftTokenAllowance);
-        IOFT(_oft).send{ value: 0 }(sendParam, fee, address(this));
-
-        // Return 0 — native msg.value fee handling is bypassed on Tempo.
-        return 0;
     }
 }

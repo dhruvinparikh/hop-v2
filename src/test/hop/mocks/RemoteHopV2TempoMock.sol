@@ -212,29 +212,36 @@ contract RemoteHopV2TempoMock is HopV2, IOAppComposer {
             ? 0
             : quoteHop(_hopMessage.dstEid, _hopMessage.dstGas, _hopMessage.data);
 
-        address oftToken = IOFT(_oft).token();
-        uint256 oftTokenAllowance = _amountLD;
-
-        if (fee.nativeFee > 0) {
-            _payNativeFee(fee.nativeFee, address(this));
-            if (nativeToken == oftToken) {
-                oftTokenAllowance += fee.nativeFee;
-            }
-        }
+        _collectAndApproveOftFee(_oft, _amountLD, fee.nativeFee);
 
         if (hopFeeOnFraxtal > 0) {
             _payNativeFee(hopFeeOnFraxtal, address(this));
         }
 
-        // Approve and send the OFT to Fraxtal hub
-        if (fee.nativeFee > 0 && nativeToken != oftToken) {
-            ITIP20(nativeToken).approve(_oft, fee.nativeFee);
-        }
-        if (oftTokenAllowance > 0) ITIP20(oftToken).approve(_oft, oftTokenAllowance);
+        // Send the OFT to Fraxtal hub
         IOFT(_oft).send{ value: 0 }(sendParam, fee, address(this));
 
         // Return 0 — native msg.value fee handling is bypassed on Tempo.
         return 0;
+    }
+
+    /// @dev Funds the OFT's `_payNative()` path from this hop contract and sets the approvals
+    ///      required for fee payment and token debit.
+    function _collectAndApproveOftFee(address _oft, uint256 _amountLD, uint256 _nativeFee) internal {
+        address oftToken = IOFT(_oft).token();
+        uint256 oftTokenAllowance = _amountLD;
+
+        if (_nativeFee > 0) {
+            _payNativeFee(_nativeFee, address(this));
+
+            if (nativeToken == oftToken) {
+                oftTokenAllowance += _nativeFee;
+            } else {
+                ITIP20(nativeToken).approve(_oft, _nativeFee);
+            }
+        }
+
+        if (oftTokenAllowance > 0) ITIP20(oftToken).approve(_oft, oftTokenAllowance);
     }
 
     /// @dev Handles gas payment for EndpointV2Alt which uses ERC20 as native token.

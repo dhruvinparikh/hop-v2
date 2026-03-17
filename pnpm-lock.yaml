@@ -58,6 +58,9 @@ importers:
       tempoxyz/tempo-std:
         specifier: github:tempoxyz/tempo-std
         version: tempo-std@https://codeload.github.com/tempoxyz/tempo-std/tar.gz/744b43d6dcb0c59b8192b91792c3204a020a6423
+      viem:
+        specifier: ^2.46.3
+        version: 2.47.4(typescript@5.9.3)
     devDependencies:
       "@layerzerolabs/lz-evm-protocol-v2":
         specifier: ^3.0.156

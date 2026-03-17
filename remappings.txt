@@ -18,3 +18,4 @@ tempo-std/=node_modules/tempoxyz/tempo-std/src/
 @layerzerolabs/oapp-alt-evm/=node_modules/@layerzerolabs/oapp-alt-evm/
 @layerzerolabs/oft-alt-evm/=node_modules/@layerzerolabs/oft-alt-evm/
 contracts/=node_modules/@fraxfinance/frax-oft-upgradeable/contracts/
+@fraxfinance/layerzero-v2-upgradeable/=node_modules/@fraxfinance/layerzero-v2-upgradeable/

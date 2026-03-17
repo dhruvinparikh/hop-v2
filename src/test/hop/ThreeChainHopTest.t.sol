@@ -174,7 +174,8 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
         remoteHopA = RemoteHopV2Mock(payable(address(proxy)));
 
         // Fund the hop with ETH for refunds
-        payable(address(remoteHopA)).call{ value: 10 ether }("");
+        (bool remoteHopAFunded, ) = payable(address(remoteHopA)).call{ value: 10 ether }("");
+        assertTrue(remoteHopAFunded, "Remote hop funding failed");
     }
 
     function _deployFraxtalContracts() internal {
@@ -213,7 +214,8 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
         fraxtalHop = FraxtalHopV2Mock(payable(address(proxy)));
 
         // Fund the hop with ETH for gas
-        payable(address(fraxtalHop)).call{ value: 10 ether }("");
+        (bool fraxtalHopFunded, ) = payable(address(fraxtalHop)).call{ value: 10 ether }("");
+        assertTrue(fraxtalHopFunded, "Fraxtal hop funding failed");
 
         // Pre-fund adapter with tokens (for lock/unlock pattern)
         fraxtalToken.mint(address(fraxtalAdapter), 1_000_000e18);
