@@ -11,7 +11,7 @@ import { OFTMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTMsgCodec.s
 import { deployFraxtalHopV2 } from "src/script/hop/DeployFraxtalHopV2.s.sol";
 import { deployRemoteHopV2 } from "src/script/hop/DeployRemoteHopV2.s.sol";
 
-contract HopV201RecoverErc20Test is FraxTest {
+contract HopV201RecoverTest is FraxTest {
     address constant DEPLOYER = 0x54F9b12743A7DeeC0ea48721683cbebedC6E17bC;
     address constant ENDPOINT = 0x1a44076050125825900e736c501f859c50fE728c;
     address constant EXECUTOR_FRAXTAL = 0x41Bdb4aa4A63a5b2Efc531858d3118392B1A1C3d;
@@ -84,7 +84,9 @@ contract HopV201RecoverErc20Test is FraxTest {
         return RemoteHopV201(proxy);
     }
 
-    function test_FraxtalHopV201_recoverErc20() public {
+    // recoverERC20
+
+    function test_FraxtalHopV201_recoverERC20() public {
         FraxtalHopV201 fraxtalHop = setUpFraxtalV201();
 
         address recipient = address(0xBEEF);
@@ -92,13 +94,13 @@ contract HopV201RecoverErc20Test is FraxTest {
         deal(frxUSD_FRAXTAL, address(fraxtalHop), amount);
 
         vm.prank(DEPLOYER);
-        fraxtalHop.recoverErc20(frxUSD_FRAXTAL, recipient, amount);
+        fraxtalHop.recoverERC20(frxUSD_FRAXTAL, recipient, amount);
 
         assertEq(IERC20(frxUSD_FRAXTAL).balanceOf(recipient), amount);
         assertEq(IERC20(frxUSD_FRAXTAL).balanceOf(address(fraxtalHop)), 0);
     }
 
-    function test_FraxtalHopV201_recoverErc20_nonAdmin_reverts() public {
+    function test_FraxtalHopV201_recoverERC20_nonAdmin_reverts() public {
         FraxtalHopV201 fraxtalHop = setUpFraxtalV201();
 
         address nonAdmin = address(0xBEEF);
@@ -109,10 +111,10 @@ contract HopV201RecoverErc20Test is FraxTest {
         vm.expectRevert(
             abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, nonAdmin, bytes32(0))
         );
-        fraxtalHop.recoverErc20(frxUSD_FRAXTAL, nonAdmin, amount);
+        fraxtalHop.recoverERC20(frxUSD_FRAXTAL, nonAdmin, amount);
     }
 
-    function test_RemoteHopV201_recoverErc20() public {
+    function test_RemoteHopV201_recoverERC20() public {
         RemoteHopV201 remoteHop = setUpArbitrumV201();
 
         address recipient = address(0xBEEF);
@@ -120,13 +122,13 @@ contract HopV201RecoverErc20Test is FraxTest {
         deal(frxUSD_ARB, address(remoteHop), amount);
 
         vm.prank(DEPLOYER);
-        remoteHop.recoverErc20(frxUSD_ARB, recipient, amount);
+        remoteHop.recoverERC20(frxUSD_ARB, recipient, amount);
 
         assertEq(IERC20(frxUSD_ARB).balanceOf(recipient), amount);
         assertEq(IERC20(frxUSD_ARB).balanceOf(address(remoteHop)), 0);
     }
 
-    function test_RemoteHopV201_recoverErc20_nonAdmin_reverts() public {
+    function test_RemoteHopV201_recoverERC20_nonAdmin_reverts() public {
         RemoteHopV201 remoteHop = setUpArbitrumV201();
 
         address nonAdmin = address(0xBEEF);
@@ -137,6 +139,68 @@ contract HopV201RecoverErc20Test is FraxTest {
         vm.expectRevert(
             abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, nonAdmin, bytes32(0))
         );
-        remoteHop.recoverErc20(frxUSD_ARB, nonAdmin, amount);
+        remoteHop.recoverERC20(frxUSD_ARB, nonAdmin, amount);
+    }
+
+    // recoverETH
+
+    function test_FraxtalHopV201_recoverETH() public {
+        FraxtalHopV201 fraxtalHop = setUpFraxtalV201();
+
+        address recipient = address(0xBEEF);
+        uint256 amount = 1 ether;
+        vm.deal(address(fraxtalHop), amount);
+
+        uint256 recipientBefore = recipient.balance;
+
+        vm.prank(DEPLOYER);
+        fraxtalHop.recoverETH(recipient, amount);
+
+        assertEq(recipient.balance, recipientBefore + amount);
+        assertEq(address(fraxtalHop).balance, 0);
+    }
+
+    function test_FraxtalHopV201_recoverETH_nonAdmin_reverts() public {
+        FraxtalHopV201 fraxtalHop = setUpFraxtalV201();
+
+        address nonAdmin = address(0xBEEF);
+        uint256 amount = 1 ether;
+        vm.deal(address(fraxtalHop), amount);
+
+        vm.prank(nonAdmin);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, nonAdmin, bytes32(0))
+        );
+        fraxtalHop.recoverETH(nonAdmin, amount);
+    }
+
+    function test_RemoteHopV201_recoverETH() public {
+        RemoteHopV201 remoteHop = setUpArbitrumV201();
+
+        address recipient = address(0xBEEF);
+        uint256 amount = 1 ether;
+        vm.deal(address(remoteHop), amount);
+
+        uint256 recipientBefore = recipient.balance;
+
+        vm.prank(DEPLOYER);
+        remoteHop.recoverETH(recipient, amount);
+
+        assertEq(recipient.balance, recipientBefore + amount);
+        assertEq(address(remoteHop).balance, 0);
+    }
+
+    function test_RemoteHopV201_recoverETH_nonAdmin_reverts() public {
+        RemoteHopV201 remoteHop = setUpArbitrumV201();
+
+        address nonAdmin = address(0xBEEF);
+        uint256 amount = 1 ether;
+        vm.deal(address(remoteHop), amount);
+
+        vm.prank(nonAdmin);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, nonAdmin, bytes32(0))
+        );
+        remoteHop.recoverETH(nonAdmin, amount);
     }
 }

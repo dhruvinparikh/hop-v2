@@ -15,7 +15,7 @@ import { IOFT2 } from "src/contracts/interfaces/IOFT2.sol";
 import { IHopV201, HopMessage } from "src/contracts/interfaces/IHopV201.sol";
 import { IHopComposer } from "src/contracts/interfaces/IHopComposer.sol";
 
-/// @notice HopV201 is nearly identical to HopV2 except for the recover/recoverErc20() functions.
+/// @notice HopV201 is nearly identical to HopV2 except for the recover/recoverERC20()/recoverETH functions.
 contract HopV201 is AccessControlEnumerableUpgradeable, IHopV201 {
     uint32 internal constant FRAXTAL_EID = 30_255;
     /// @dev keccak256("PAUSER_ROLE")
@@ -387,8 +387,13 @@ contract HopV201 is AccessControlEnumerableUpgradeable, IHopV201 {
         $.executorOptions[eid] = _options;
     }
 
-    function recoverErc20(address erc20, address to, uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function recoverERC20(address erc20, address to, uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
         SafeERC20.safeTransfer(IERC20(erc20), to, amount);
+    }
+
+    function recoverETH(address to, uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        (bool success, ) = payable(to).call{ value: amount }("");
+        if (!success) revert RefundFailed();
     }
 
     function setMessageProcessed(

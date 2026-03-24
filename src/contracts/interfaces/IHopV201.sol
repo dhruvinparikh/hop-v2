@@ -46,7 +46,7 @@ interface IHopV201 {
     function setExecutorOptions(uint32 eid, bytes memory _options) external;
     function setRemoteHop(uint32 _eid, address _remoteHop) external;
     function setRemoteHop(uint32 _eid, bytes32 _remoteHop) external;
-    function recoverErc20(address erc20, address to, uint256 amount) external;
+    function recoverERC20(address erc20, address to, uint256 amount) external;
     function setMessageProcessed(address _oft, uint32 _srcEid, uint64 _nonce, bytes32 _composeFrom) external;
 
     // Storage views
