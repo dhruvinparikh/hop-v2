@@ -29,8 +29,8 @@ bytecode_hash = "none"
 cbor_metadata = false
 # Contracts to track with --gas-report
 #gas_reports = []
-# evm_version = "paris"
 fs_permissions = [{ access = "read-write", path = "./"}]
+evm_version = "cancun"
 
 [fuzz]
 # Amount of runs per fuzz test
