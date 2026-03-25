@@ -30,6 +30,10 @@ contract FraxtalHopV201 is HopV201, IOAppComposer {
         _disableInitializers();
     }
 
+    function version() external view returns (string memory) {
+        return "2.0.1";
+    }
+
     function initialize(
         uint32 _localEid,
         address _endpoint,
