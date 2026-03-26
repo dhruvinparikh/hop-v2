@@ -19,7 +19,8 @@ import { IHopComposer } from "src/contracts/interfaces/IHopComposer.sol";
 contract HopV201 is AccessControlEnumerableUpgradeable, IHopV201 {
     uint32 internal constant FRAXTAL_EID = 30_255;
     /// @dev keccak256("PAUSER_ROLE")
-    bytes32 internal constant PAUSER_ROLE = 0x65d7a28e3265b37a6474929f336521b332c1681b933f6cb9f3376673440d862a;
+    bytes32 public constant PAUSER_ROLE = 0x65d7a28e3265b37a6474929f336521b332c1681b933f6cb9f3376673440d862a;
+    bytes32 public constant RECOVER_ROLE = 0x62b337eaefec74dadf1a62e856bf9db4f14a0f27d4f48156a95a9f98e7d5e066; // keccak256("RECOVER_ROLE")
 
     struct HopV2Storage {
         /// @dev EID of this chain
@@ -387,11 +388,11 @@ contract HopV201 is AccessControlEnumerableUpgradeable, IHopV201 {
         $.executorOptions[eid] = _options;
     }
 
-    function recoverERC20(address erc20, address to, uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function recoverERC20(address erc20, address to, uint256 amount) external onlyRole(RECOVER_ROLE) {
         SafeERC20.safeTransfer(IERC20(erc20), to, amount);
     }
 
-    function recoverETH(address to, uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function recoverETH(address to, uint256 amount) external onlyRole(RECOVER_ROLE) {
         (bool success, ) = payable(to).call{ value: amount }("");
         if (!success) revert RefundFailed();
     }

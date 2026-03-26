@@ -54,7 +54,12 @@ contract HopV201RecoverTest is FraxTest {
         vm.prank(proxyAdmin);
         ITransparentUpgradeableProxy(proxy).upgradeToAndCall(address(impl), "");
 
-        return FraxtalHopV201(proxy);
+        FraxtalHopV201 hop = FraxtalHopV201(proxy);
+        vm.startPrank(DEPLOYER);
+        hop.grantRole(hop.RECOVER_ROLE(), DEPLOYER);
+        vm.stopPrank();
+
+        return hop;
     }
 
     function setUpArbitrumV201() internal returns (RemoteHopV201) {
@@ -81,7 +86,12 @@ contract HopV201RecoverTest is FraxTest {
         );
         vm.stopPrank();
 
-        return RemoteHopV201(proxy);
+        RemoteHopV201 hop = RemoteHopV201(proxy);
+        vm.startPrank(DEPLOYER);
+        hop.grantRole(hop.RECOVER_ROLE(), DEPLOYER);
+        vm.stopPrank();
+
+        return hop;
     }
 
     // recoverERC20
@@ -107,11 +117,16 @@ contract HopV201RecoverTest is FraxTest {
         uint256 amount = 1e18;
         deal(frxUSD_FRAXTAL, address(fraxtalHop), amount);
 
-        vm.prank(nonAdmin);
+        vm.startPrank(nonAdmin);
         vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, nonAdmin, bytes32(0))
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                nonAdmin,
+                fraxtalHop.RECOVER_ROLE()
+            )
         );
         fraxtalHop.recoverERC20(frxUSD_FRAXTAL, nonAdmin, amount);
+        vm.stopPrank();
     }
 
     function test_RemoteHopV201_recoverERC20() public {
@@ -135,11 +150,16 @@ contract HopV201RecoverTest is FraxTest {
         uint256 amount = 1e18;
         deal(frxUSD_ARB, address(remoteHop), amount);
 
-        vm.prank(nonAdmin);
+        vm.startPrank(nonAdmin);
         vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, nonAdmin, bytes32(0))
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                nonAdmin,
+                remoteHop.RECOVER_ROLE()
+            )
         );
         remoteHop.recoverERC20(frxUSD_ARB, nonAdmin, amount);
+        vm.stopPrank();
     }
 
     // recoverETH
@@ -167,11 +187,16 @@ contract HopV201RecoverTest is FraxTest {
         uint256 amount = 1 ether;
         vm.deal(address(fraxtalHop), amount);
 
-        vm.prank(nonAdmin);
+        vm.startPrank(nonAdmin);
         vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, nonAdmin, bytes32(0))
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                nonAdmin,
+                fraxtalHop.RECOVER_ROLE()
+            )
         );
         fraxtalHop.recoverETH(nonAdmin, amount);
+        vm.stopPrank();
     }
 
     function test_RemoteHopV201_recoverETH() public {
@@ -197,10 +222,15 @@ contract HopV201RecoverTest is FraxTest {
         uint256 amount = 1 ether;
         vm.deal(address(remoteHop), amount);
 
-        vm.prank(nonAdmin);
+        vm.startPrank(nonAdmin);
         vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, nonAdmin, bytes32(0))
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                nonAdmin,
+                remoteHop.RECOVER_ROLE()
+            )
         );
         remoteHop.recoverETH(nonAdmin, amount);
+        vm.stopPrank();
     }
 }
