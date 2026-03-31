@@ -180,9 +180,9 @@ function deployRemoteHopV2(
 
     // deploy v201 implementation and upgrade the proxy to the new imp
     address hopV201 = address(
-        new RemoteHopV201{ salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956ca4f920277adcd56bbb0400c0) }()
+        new RemoteHopV201{ salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956c425b52b18422043c590a00c0) }()
     );
-    if (!isTest) require(hopV201 == 0x00000000b859B05c1Ffe829E06C12e220A1aeC30, "hopV201 address mismatch");
+    if (!isTest) require(hopV201 == 0xD3b7B923990000003500009264561127A87B00Bd, "hopV201 address mismatch");
 
     ITransparentUpgradeableProxy(address(proxy)).upgradeToAndCall(hopV201, initializeArgs);
     ITransparentUpgradeableProxy(address(proxy)).changeAdmin(_proxyAdmin);
