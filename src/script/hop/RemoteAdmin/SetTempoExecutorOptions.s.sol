@@ -24,7 +24,6 @@ contract SetTempoExecutorOptions is BaseScript {
     }
 
     HopData[] public hopDatas;
-    SafeTx[] public txs;
 
     constructor() {
         _addHop("Arbitrum", 30_110, 0x954286118E93df807aB6f99aE0454f8710f0a8B9);
@@ -54,6 +53,7 @@ contract SetTempoExecutorOptions is BaseScript {
 
     function run() external {
         bytes memory tempoOptions = _tempoExecutorOptions();
+        string memory root = vm.projectRoot();
 
         for (uint256 i = 0; i < hopDatas.length; i++) {
             HopData memory hopData = hopDatas[i];
@@ -85,21 +85,24 @@ contract SetTempoExecutorOptions is BaseScript {
             (bool success, ) = FRAXTAL_HOP.call{ value: fee }(localCall);
             require(success, string.concat("sendOFT failed for ", hopData.name));
 
-            txs.push(
-                SafeTx({
-                    name: string.concat("Set Tempo executor options on ", hopData.name),
-                    to: FRAXTAL_HOP,
-                    value: fee,
-                    data: localCall
-                })
-            );
-        }
+            SafeTx[] memory singleTx = new SafeTx[](1);
+            singleTx[0] = SafeTx({
+                name: string.concat("Set Tempo executor options on ", hopData.name),
+                to: FRAXTAL_HOP,
+                value: fee,
+                data: localCall
+            });
 
-        string memory root = vm.projectRoot();
-        string memory filename = string(
-            abi.encodePacked(root, "/src/script/hop/RemoteAdmin/txs/SetTempoExecutorOptions.json")
-        );
-        new SafeTxHelper().writeTxs(txs, filename);
+            string memory filename = string(
+                abi.encodePacked(
+                    root,
+                    "/src/script/hop/RemoteAdmin/txs/SetTempoExecutorOptions-",
+                    hopData.name,
+                    ".json"
+                )
+            );
+            new SafeTxHelper().writeTxs(singleTx, filename);
+        }
     }
 
     function _addHop(string memory _name, uint32 _eid, address _remoteAdmin) internal {
