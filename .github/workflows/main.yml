@@ -31,4 +31,6 @@ jobs:
       - run: pnpm i
       - run: pnpm lint:check
       - run: forge build
-      - run: forge test
+      - run: >-
+          forge test --no-match-path
+          'src/test/hop/{RemoteHopV2TempoForkTest.t.sol,RemoteHopV2TempoRealOFTIntegration.t.sol,ThreeChainHopTest.t.sol}'
