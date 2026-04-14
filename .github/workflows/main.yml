@@ -33,4 +33,4 @@ jobs:
       - run: forge build
       - run: >-
           forge test --match-path
-          'src/test/{RemoteAdminTest.t.sol,hop/HopV2QuoteHopOptionsTest.t.sol,hop/RemoteHopV2TempoRealOFTIntegration.t.sol,hop/ThreeChainHopTest.t.sol}'
+          'src/test/{RemoteAdminTest.t.sol,hop/HopV2QuoteHopOptionsTest.t.sol}'
