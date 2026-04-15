@@ -120,10 +120,17 @@ abstract contract SetExecutorOptionsBase is BaseScript {
 
             string memory chainFilename = string(
                 abi.encodePacked(
-                    root, "/", outputDir, "/",
-                    vm.toString(uint256(_sourceEid())), "-",
+                    root,
+                    "/",
+                    outputDir,
+                    "/",
+                    vm.toString(uint256(_sourceEid())),
+                    "-",
                     vm.toString(uint256(hopData.eid)),
-                    "(", hopData.name, ")", ".json"
+                    "(",
+                    hopData.name,
+                    ")",
+                    ".json"
                 )
             );
             new SafeTxHelper().writeTxs(singleTx, chainFilename);
