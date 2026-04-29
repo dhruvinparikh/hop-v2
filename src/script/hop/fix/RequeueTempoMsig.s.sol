@@ -87,6 +87,7 @@ import { IAccessControl } from "@openzeppelin/contracts/access/IAccessControl.so
 ///   forge script src/script/hop/fix/RequeueTempoMsig.s.sol --rpc-url https://rpc.tempo.xyz --ffi
 interface IProxyAdmin {
     function upgrade(address proxy, address impl) external;
+    function upgradeAndCall(address proxy, address impl, bytes calldata data) external payable;
 }
 
 interface IHopV2SetExecutorOptions {
@@ -134,17 +135,21 @@ contract RequeueTempoMsig is Script {
         string memory root = vm.projectRoot();
         string memory dir = string(abi.encodePacked(root, "/src/script/hop/fix/txs/RequeueTempoMsig"));
 
-        // ---- 1. ProxyAdmin.upgrade(RemoteHopV2 -> RemoteHopV2Tempo) ----
-        // Reinit dropped: proxy is already initialized; on-chain simulation
-        // of upgradeAndCall(..., initialize(...)) reverts with
-        // InvalidInitialization() (0xf92ee8a9). RemoteHopV2Tempo introduces
-        // no new storage, so plain upgrade() is sufficient and safe.
+        // ---- 1. ProxyAdmin.upgradeAndCall(RemoteHopV2 -> RemoteHopV2Tempo, "") ----
+        // The Tempo RemoteHopV2 proxy is OZ v5 TransparentUpgradeableProxy: its
+        // admin path only routes the `upgradeToAndCall(address,bytes)` selector
+        // (0x4f1ef286). The on-chain ProxyAdmin (0x000000db...7428) is OZ v4 and
+        // exposes both `upgrade(proxy,impl)` (which internally calls the legacy
+        // `upgradeTo` selector → reverts with ProxyDeniedAdminAccess() on v5) and
+        // `upgradeAndCall(proxy,impl,data)` (which encodes upgradeToAndCall →
+        // accepted by v5). Pass empty data: the proxy is already initialized and
+        // RemoteHopV2Tempo introduces no new storage, so no reinit is needed.
         _writeOne(
             SafeTx({
-                name: "1. ProxyAdmin.upgrade -> RemoteHopV2Tempo (no reinit; proxy already initialized)",
+                name: "1. ProxyAdmin.upgradeAndCall -> RemoteHopV2Tempo (empty data; v5 proxy admin path)",
                 to: PROXY_ADMIN,
                 value: 0,
-                data: abi.encodeCall(IProxyAdmin.upgrade, (REMOTE_HOP, NEW_IMPL))
+                data: abi.encodeCall(IProxyAdmin.upgradeAndCall, (REMOTE_HOP, NEW_IMPL, ""))
             }),
             dir,
             "1-upgrade-RemoteHopV2Tempo.json"
