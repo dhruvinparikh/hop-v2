@@ -5,7 +5,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 OUTPUT_DIR="src/script/hop/fix/generated/set-num-dvns"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-120s}"
-NUM_DVNS="${NUM_DVNS:-5}"
+NUM_DVNS_DEFAULT="${NUM_DVNS:-5}"
 BLOCK_TIMESTAMP="${BLOCK_TIMESTAMP:-$(date +%s)}"
 START_CHAIN="${START_CHAIN:-}"
 START_CHAIN_SEEN=0
@@ -13,10 +13,10 @@ START_CHAIN_SEEN=0
 usage() {
   echo "Usage: $0 [fresh]"
   echo
-  echo "Generate direct local Safe JSON batches for HopV2.setNumDVNs(${NUM_DVNS}) into ${OUTPUT_DIR}."
+  echo "Generate direct local Safe JSON batches for HopV2.setNumDVNs() into ${OUTPUT_DIR}."
   echo
   echo "Environment:"
-  echo "  NUM_DVNS=5            target HopV2 numDVNs"
+  echo "  NUM_DVNS=5            default HopV2 numDVNs"
   echo "  BLOCK_TIMESTAMP=...   block timestamp used for Safe JSON createdAt"
   echo "  START_CHAIN=8453      skip earlier chains and resume generation at this chain id"
   echo "  TIMEOUT_SECONDS=120s  per-forge-script timeout"
@@ -63,6 +63,15 @@ should_run_chain() {
   return 1
 }
 
+num_dvns_for_chain() {
+  local chain_id="$1"
+
+  case "${chain_id}" in
+    5031|747474) echo "4" ;;
+    *) echo "${NUM_DVNS_DEFAULT}" ;;
+  esac
+}
+
 run_chain() {
   local chain_id="$1"
 
@@ -70,11 +79,14 @@ run_chain() {
     return 0
   fi
 
-  echo "SetNumDVNsDirect: ${chain_id}"
+  local num_dvns
+  num_dvns="$(num_dvns_for_chain "${chain_id}")"
+
+  echo "SetNumDVNsDirect: ${chain_id} numDVNs=${num_dvns}"
   clean_chain "${chain_id}"
 
   OUTPUT_DIR="${OUTPUT_DIR}" \
-  NUM_DVNS="${NUM_DVNS}" \
+  NUM_DVNS="${num_dvns}" \
   RUST_LOG=error \
   timeout "${TIMEOUT_SECONDS}" \
     forge script src/script/hop/fix/SetNumDVNsDirect.s.sol \
