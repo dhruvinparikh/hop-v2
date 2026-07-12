@@ -9,6 +9,16 @@ struct HopMessage {
     bytes data;
 }
 
+struct RouteFee {
+    /// @dev Admin-set fee for the Fraxtal onward leg, in Fraxtal native units (FRAX).
+    ///      When non-zero, this overrides the source-chain quoteHop estimate.
+    uint256 fraxtalOnwardFee;
+    /// @dev Block timestamp when the route fee was last updated.
+    uint64 lastUpdated;
+    /// @dev Whether this route fee override is active.
+    bool active;
+}
+
 interface IHopV2 {
     // Mutable funcs
 
@@ -49,6 +59,17 @@ interface IHopV2 {
     function recover(address _target, uint256 _value, bytes memory _data) external;
     function setMessageProcessed(address _oft, uint32 _srcEid, uint64 _nonce, bytes32 _composeFrom) external;
 
+    /// @notice Set the admin-managed route fee override for a destination EID.
+    /// @dev When active, this fee replaces the source-chain quoteHop estimate.
+    ///      The fee is denominated in Fraxtal native units (FRAX) and is used
+    ///      to fund the lzCompose value for the second leg.
+    function setRouteFee(uint32 _dstEid, uint256 _fraxtalOnwardFee, bool _active) external;
+
+    /// @notice Set the maximum native spend allowed per message on FraxtalHopV2.
+    /// @dev Zero disables the cap. Non-zero prevents a single message from draining
+    ///      the shared FraxtalHub balance if fee accounting is wrong.
+    function setMaxSpendPerMessage(uint256 _max) external;
+
     // Storage views
     function localEid() external view returns (uint32);
     function endpoint() external view returns (address);
@@ -62,4 +83,6 @@ interface IHopV2 {
     function EXECUTOR() external view returns (address);
     function DVN() external view returns (address);
     function TREASURY() external view returns (address);
+    function routeFees(uint32 dstEid) external view returns (RouteFee memory);
+    function maxSpendPerMessage() external view returns (uint256);
 }

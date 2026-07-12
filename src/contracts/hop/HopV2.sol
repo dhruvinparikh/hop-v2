@@ -12,7 +12,7 @@ import { IExecutor } from "src/contracts/interfaces/IExecutor.sol";
 
 import { SendParam, MessagingFee, IOFT } from "@fraxfinance/layerzero-v2-upgradeable/oapp/contracts/oft/interfaces/IOFT.sol";
 import { IOFT2 } from "src/contracts/interfaces/IOFT2.sol";
-import { IHopV2, HopMessage } from "src/contracts/interfaces/IHopV2.sol";
+import { IHopV2, HopMessage, RouteFee } from "src/contracts/interfaces/IHopV2.sol";
 import { IHopComposer } from "src/contracts/interfaces/IHopComposer.sol";
 
 contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
@@ -45,6 +45,13 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         address DVN;
         /// @dev Address of LZ treasury
         address TREASURY;
+        /// @dev Admin-set route fee overrides for destination EIDs.
+        ///      When active, these replace the source-chain quoteHop estimate
+        ///      with a fee sourced from actual Fraxtal-side LZ pricing.
+        mapping(uint32 dstEid => RouteFee) routeFees;
+        /// @dev Maximum native spend allowed per message on FraxtalHopV2.
+        ///      Zero disables the cap.
+        uint256 maxSpendPerMessage;
     }
 
     // keccak256(abi.encode(uint256(keccak256("frax.storage.HopV2")) - 1)) & ~bytes32(uint256(0xff))
@@ -65,6 +72,8 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
     error NotAuthorized();
     error InsufficientFee();
     error RefundFailed();
+    error InvalidAmount();
+    error SpendCapExceeded();
 
     modifier onlyAuthorized() {
         if (!(hasRole(DEFAULT_ADMIN_ROLE, msg.sender) || hasRole(PAUSER_ROLE, msg.sender))) {
@@ -143,6 +152,7 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
 
         // Transfer the OFT token to the hop. Clean off dust for the sender that would otherwise be lost through LZ.
         _amountLD = removeDust(_oft, _amountLD);
+        if (_amountLD == 0) revert InvalidAmount();
         if (_amountLD > 0) SafeERC20.safeTransferFrom(IERC20(IOFT(_oft).token()), msg.sender, address(this), _amountLD);
 
         uint256 sendFee;
@@ -216,6 +226,15 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
     ) public view override returns (uint256 finalFee) {
         HopV2Storage storage $ = _getHopV2Storage();
 
+        // Use admin-set route fee override when available. This fee is sourced
+        // from actual Fraxtal-side LZ pricing, not the source-chain estimate.
+        RouteFee memory route = $.routeFees[_dstEid];
+        if (route.active && route.fraxtalOnwardFee > 0) {
+            finalFee = (route.fraxtalOnwardFee * (10_000 + $.hopFee)) / 10_000;
+            return finalFee;
+        }
+
+        // Fallback: legacy source-chain estimate for routes without an override.
         uint256 dvnFee = ILayerZeroDVN($.DVN).getFee(_dstEid, 5, address(this), "");
         bytes memory options = $.executorOptions[_dstEid];
         if (options.length == 0) options = hex"01001101000000000000000000000000000493E0";
@@ -281,6 +300,12 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
             // - sendOFT()
             // - Fraxtal lzCompose() when remote hop is sender
             fee = IOFT(_oft).quoteSend(sendParam, false);
+            // On Fraxtal lzCompose, if the source RemoteHopV2 passed compose value
+            // (via route fee override), use the received msg.value to fund the
+            // second leg instead of paying from the hub's shared balance.
+            if (localEid() == FRAXTAL_EID && msg.value > 0 && msg.value >= fee.nativeFee) {
+                fee.nativeFee = msg.value;
+            }
         } else {
             // Executes when:
             // - Fraxtal lzCompose() from unregistered sender
@@ -289,6 +314,11 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
 
         // Send the OFT to the recipient
         if (_amountLD > 0) SafeERC20.forceApprove(IERC20(IOFT(_oft).token()), _oft, _amountLD);
+
+        // Enforce spend cap to prevent draining the shared FraxtalHub balance.
+        HopV2Storage storage $ = _getHopV2Storage();
+        if ($.maxSpendPerMessage > 0 && fee.nativeFee > $.maxSpendPerMessage) revert SpendCapExceeded();
+
         IOFT(_oft).send{ value: fee.nativeFee }(sendParam, fee, address(this));
 
         // Return the total amount charged in the send.  On fraxtal, this is only the native fee as there is no hop needed.
@@ -386,6 +416,31 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         $.executorOptions[eid] = _options;
     }
 
+    /// @notice Set the admin-managed route fee override for a destination EID.
+    /// @dev When active, this fee replaces the source-chain quoteHop estimate.
+    ///      The fee should be sourced from the actual FraxtalHopV2.quoteHop(dstEid)
+    ///      on Fraxtal, converted to account for the hopFee margin.
+    function setRouteFee(
+        uint32 _dstEid,
+        uint256 _fraxtalOnwardFee,
+        bool _active
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        HopV2Storage storage $ = _getHopV2Storage();
+        $.routeFees[_dstEid] = RouteFee({
+            fraxtalOnwardFee: _fraxtalOnwardFee,
+            lastUpdated: uint64(block.timestamp),
+            active: _active
+        });
+    }
+
+    /// @notice Set the maximum native spend allowed per message on FraxtalHopV2.
+    /// @dev Zero disables the cap. Non-zero prevents a single message from draining
+    ///      the shared FraxtalHub balance if fee accounting is wrong.
+    function setMaxSpendPerMessage(uint256 _max) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        HopV2Storage storage $ = _getHopV2Storage();
+        $.maxSpendPerMessage = _max;
+    }
+
     function recover(address _target, uint256 _value, bytes memory _data) external onlyRole(DEFAULT_ADMIN_ROLE) {
         (bool success, ) = _target.call{ value: _value }(_data);
         require(success);
@@ -463,6 +518,16 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
     function TREASURY() external view returns (address) {
         HopV2Storage storage $ = _getHopV2Storage();
         return $.TREASURY;
+    }
+
+    function routeFees(uint32 dstEid) external view returns (RouteFee memory) {
+        HopV2Storage storage $ = _getHopV2Storage();
+        return $.routeFees[dstEid];
+    }
+
+    function maxSpendPerMessage() external view returns (uint256) {
+        HopV2Storage storage $ = _getHopV2Storage();
+        return $.maxSpendPerMessage;
     }
 
     // virtual functions to override

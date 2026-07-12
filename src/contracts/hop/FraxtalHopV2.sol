@@ -96,6 +96,12 @@ contract FraxtalHopV2 is HopV2, IOAppComposer {
         if (hopMessage.dstEid == FRAXTAL_EID) {
             _sendLocal({ _oft: _oft, _amount: amountLD, _hopMessage: hopMessage });
         } else {
+            // The compose value (msg.value) funds the second leg. When the source
+            // RemoteHopV2 set a route fee override, this value was passed as the
+            // lzCompose option value and is available here as msg.value.
+            // _sendToDestination uses msg.value when _isTrustedHopMessage is false
+            // (untrusted path), or quotes the OFT directly (trusted path).
+            // For trusted messages with compose value, we pass the value through.
             _sendToDestination({
                 _oft: _oft,
                 _amountLD: removeDust(_oft, amountLD),

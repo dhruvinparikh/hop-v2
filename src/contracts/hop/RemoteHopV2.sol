@@ -6,6 +6,7 @@ import { IOAppComposer } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces
 import { OptionsBuilder } from "@fraxfinance/layerzero-v2-upgradeable/oapp/contracts/oapp/libs/OptionsBuilder.sol";
 import { SendParam } from "@fraxfinance/layerzero-v2-upgradeable/oapp/contracts/oft/interfaces/IOFT.sol";
 import { HopV2, HopMessage } from "src/contracts/hop/HopV2.sol";
+import { RouteFee } from "src/contracts/interfaces/IHopV2.sol";
 
 // ====================================================================
 // |     ______                   _______                             |
@@ -60,7 +61,15 @@ contract RemoteHopV2 is HopV2, IOAppComposer {
             if (_hopMessage.dstGas < 400_000) _hopMessage.dstGas = 400_000;
             uint128 fraxtalGas = 1_000_000;
             if (_hopMessage.dstGas > fraxtalGas && _hopMessage.dstEid == FRAXTAL_EID) fraxtalGas = _hopMessage.dstGas;
-            options = OptionsBuilder.addExecutorLzComposeOption(options, 0, fraxtalGas, 0);
+
+            // Fund the second leg via lzCompose value. When a route fee override
+            // is active, pass it as the compose value so FraxtalHopV2 receives
+            // the native funds to pay the onward LZ fee. When no override is set,
+            // value remains 0 (legacy behavior).
+            RouteFee memory route = _getHopV2Storage().routeFees[_hopMessage.dstEid];
+            uint128 composeValue = (route.active && route.fraxtalOnwardFee > 0) ? uint128(route.fraxtalOnwardFee) : 0;
+
+            options = OptionsBuilder.addExecutorLzComposeOption(options, 0, fraxtalGas, composeValue);
             sendParam.extraOptions = options;
 
             sendParam.composeMsg = abi.encode(_hopMessage);
